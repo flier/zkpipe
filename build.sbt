@@ -6,9 +6,9 @@ lazy val commonSettings = Seq(
     scalaVersion := "2.12.1"
 )
 
-lazy val root = (project in file(".")).
-    settings(commonSettings: _*).
-    settings(
+lazy val root = (project in file("."))
+    .settings(commonSettings: _*)
+    .settings(
         name := "zkpipe",
         libraryDependencies ++= Seq(
             "org.scala-lang.modules" %% "scala-async" % "0.9.6",
@@ -22,6 +22,8 @@ lazy val root = (project in file(".")).
             "com.github.scopt" %% "scopt" % "3.5.0",
             "com.twitter" %% "finagle-http" % "6.41.0" exclude("com.google.guava", "guava"),
             "org.apache.kafka" % "kafka-clients" % "0.10.1.1",
-            "org.apache.zookeeper" % "zookeeper" % "3.4.9" exclude("org.slf4j", "slf4j-log4j12")
-        )
+            "org.apache.zookeeper" % "zookeeper" % "3.4.9" exclude("org.slf4j", "slf4j-log4j12"),
+            "com.netaporter" %% "scala-uri" % "0.4.16"
+        ),
+        transitiveClassifiers ++= Seq("sources")
     )
