@@ -65,6 +65,8 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
 
         if (buf.isEmpty) throw new EOFException()
 
+        if (stream.readByte("EOR") != 'B') throw EORException()
+
         if (checkCrc) {
             val crc = new Adler32()
 
@@ -76,11 +78,9 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
         val header = new TxnHeader()
         val record = SerializeUtils.deserializeTxn(buf, header)
 
-        if (stream.readByte("EOR") != 'B') throw EORException()
-
         position = cis.getCount
 
-        new LogRecord(record, header)
+        new LogRecord(header, record)
     }
 
     override def close(): Unit = cis.close()

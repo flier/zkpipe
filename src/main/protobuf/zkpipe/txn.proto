@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package zkpipe;
+
+message Id {
+    string scheme = 1;
+    string id = 2;
+}
+message ACL {
+    int32 perms = 1;
+    Id id = 2;
+}
+
+message CreateSessionTxn {
+    int32 timeOut = 1;
+}
+
+message CreateTxn {
+    string path = 1;
+    bytes data = 2;
+    repeated ACL acl = 3;
+    bool ephemeral = 4;
+    int32 parentCVersion = 5;
+}
+
+message CreateContainerTxn {
+    string path = 1;
+    bytes data = 2;
+    repeated ACL acl = 3;
+    bool ephemeral = 4;
+    int32 parentCVersion = 5;
+}
+
+message DeleteTxn {
+    string path = 1;
+}
+
+message SetDataTxn {
+    string path = 1;
+    bytes data = 2;
+    int32 version = 3;
+}
+
+message SetACLTxn {
+    string path = 1;
+    repeated ACL acl = 2;
+    int32 version = 3;
+}
+
+message ErrorTxn {
+    int32 error = 1;
+}
+
+message MultiTxn {
+    message Txn {
+        int32 type = 1;
+        bytes data = 2;
+    }
+
+    repeated Txn txns = 1;
+}
