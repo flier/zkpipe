@@ -2,7 +2,7 @@ package zkpipe
 
 import java.io.{Closeable, EOFException, File, FileInputStream}
 import java.nio.file.StandardWatchEventKinds._
-import java.nio.file.{FileSystems, Path}
+import java.nio.file._
 import java.util.Properties
 import java.util.zip.Adler32
 
@@ -21,6 +21,7 @@ import scopt.OptionParser
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.language.postfixOps
+import scala.util.{Failure, Success, Try}
 
 case class CRCException() extends Exception("CRC doesn't match")
 
@@ -30,7 +31,7 @@ case class IteratorException() extends Exception("iterator has finished")
 
 class LogRecord(val record: Record, val header: TxnHeader)
 
-class LogFile(file: File, offset: Int = 0, checkCrc: Boolean = true) extends Iterable[LogRecord] with Closeable {
+class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extends Closeable {
     require(file.isFile, "Have to be a regular file")
     require(file.canRead, "Have to be readable")
 
@@ -38,15 +39,40 @@ class LogFile(file: File, offset: Int = 0, checkCrc: Boolean = true) extends Ite
     private val cis = new CountingInputStream(new FileInputStream(file))
     private val stream = BinaryInputArchive.getArchive(cis)
 
+    lazy val name = file.getName
+
     val header = new FileHeader()
 
     header.deserialize(stream, "fileHeader")
 
-    private val pos = cis.getCount
+    var position = cis.getCount
 
-    if (offset > pos) cis.skip(offset-pos)
+    if (offset > position) {
+        cis.skip(offset-position)
+
+        position = cis.getCount
+    }
 
     def isValid: Boolean = header.getMagic == FileTxnLog.TXNLOG_MAGIC
+
+    val records: Stream[LogRecord] = {
+        def next(): Stream[LogRecord] = Try(readRecord()) match {
+            case Success(record) => record #:: next()
+            case Failure(err) => {
+                err match {
+                    case _: EOFException => logger.debug("EOF reached")
+                    case _: CRCException => logger.warn("CRC doesn't match")
+                    case _: EORException => logger.warn("Last transaction was partial.")
+                }
+
+                close()
+
+                Stream.empty
+            }
+        }
+
+        next()
+    }
 
     def readRecord(): LogRecord = {
         val crcValue = stream.readLong("crcValue")
@@ -67,34 +93,10 @@ class LogFile(file: File, offset: Int = 0, checkCrc: Boolean = true) extends Ite
 
         if (stream.readByte("EOR") != 'B') throw EORException()
 
+        position = cis.getCount
+
         new LogRecord(record, header)
     }
-
-    class RecordIterator extends Iterator[LogRecord] {
-        var record: Option[LogRecord] = tryRead()
-
-        def tryRead(): Option[LogRecord] = try {
-            Some(readRecord())
-        } catch {
-            case _: EOFException => logger.debug("EOF reached"); None
-            case _: CRCException => logger.warn("CRC doesn't match"); None
-            case _: EORException => logger.warn("Last transaction was partial."); None
-        }
-
-        override def hasNext: Boolean = record.isDefined
-
-        override def next(): LogRecord = {
-            val cur = record.get
-
-            record = tryRead()
-
-            cur
-        }
-    }
-
-    private lazy val iter = new RecordIterator()
-
-    override def iterator(): Iterator[LogRecord] = iter
 
     override def close(): Unit = cis.close()
 }
@@ -128,20 +130,20 @@ class LogBroker(uri: Uri) extends LazyLogging {
 class LogWatcher(files: Seq[File]) {
     val logger: Logger = Logger[LogWatcher]
 
-    private lazy val watchFiles = mutable.Map() ++ (files filter { file =>
+    val watchFiles: mutable.Map[Path, LogFile] = mutable.Map() ++ (files filter { file =>
         file.isFile && file.canRead && new LogFile(file).isValid
     } map { file =>
         (file.toPath, new LogFile(file))
     })
 
-    private lazy val watchDirs = files map { file =>
+    val watchDirs: Seq[Path] = files map { file =>
         if (file.isDirectory) file else file.getParentFile
     } map { file => file.toPath }
 
-    private lazy val watcher = FileSystems.getDefault.newWatchService()
+    val watcher: WatchService = FileSystems.getDefault.newWatchService()
 
-    private lazy val watchKeys = watchDirs map { dir =>
-        logger.info("watching directory `{}`...", dir)
+    val watchKeys: Map[WatchKey, Path] = watchDirs map { dir =>
+        logger.info(s"watching directory `$dir`...")
 
         (dir.register(watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY), dir)
     } toMap
@@ -150,26 +152,49 @@ class LogWatcher(files: Seq[File]) {
         for ( (_, logFile) <- watchFiles ) { logFile.close() }
     }
 
-    def handleEvents(): Unit = {
-        while (watchKeys.nonEmpty) {
+    val changes: Stream[LogFile] = {
+        def next(): Stream[LogFile] = {
             val watchKey = watcher.take()
 
-            watchKey.pollEvents().asScala foreach { watchEvent =>
+            val watchEvents = watchKey.pollEvents().asScala flatMap { watchEvent =>
                 val filename = watchKeys(watchKey).resolve(watchEvent.context.asInstanceOf[Path])
 
-                logger.info("file `{}` {}", filename, watchEvent.kind match {
+                logger.info(s"file `$filename` {}", watchEvent.kind match {
                     case ENTRY_CREATE => "created"
                     case ENTRY_DELETE => "deleted"
                     case ENTRY_MODIFY => "modified"
                 })
 
                 watchEvent.kind match {
-                    case ENTRY_CREATE => watchFiles.getOrElseUpdate(filename, new LogFile(filename.toFile))
-                    case ENTRY_DELETE => watchFiles.remove(filename).foreach(_.close())
-                    case ENTRY_MODIFY => watchFiles(filename)
+                    case ENTRY_CREATE => {
+                        Some(watchFiles.getOrElseUpdate(filename, new LogFile(filename.toFile)))
+                    }
+                    case ENTRY_DELETE => {
+                        watchFiles.remove(filename).foreach(_.close())
+
+                        None
+                    }
+                    case ENTRY_MODIFY => {
+                        val logFile = watchFiles.get(filename) match {
+                            case Some(logFile) => {
+                                logFile.close()
+
+                                new LogFile(logFile.file, offset = logFile.position)
+                            }
+                            case None => new LogFile(filename.toFile)
+                        }
+
+                        watchFiles(filename) = logFile
+
+                        Some(logFile)
+                    }
                 }
             }
+
+            Stream.concat(watchEvents) #::: next()
         }
+
+        next()
     }
 }
 
@@ -186,9 +211,9 @@ case class Config(logFiles: Seq[File] = Seq(),
             Seq(file)
         else {
             if (!file.exists()) {
-                logger.warn("skip path `{}` doesn't exists", file)
+                logger.warn(s"skip path `$file` doesn't exists")
             } else {
-                logger.warn("skip unknown type of file `{}`", file)
+                logger.warn(s"skip unknown type of file `$file`")
             }
 
             Seq()
@@ -242,39 +267,47 @@ object LogPipe extends LazyLogging {
 
             lazy val watcher = new LogWatcher(config.files)
 
-            lazy val watcherThread = new Thread(() => {
-                logger.info("watcher started")
-
-                while (!Thread.interrupted()) {
-                    try {
-                        watcher.handleEvents()
-                    } catch {
-                        case _: InterruptedException =>
-                            logger.info("watcher is closing")
-
-                            watcher.close()
-
-                            logger.info("watcher closed")
-
-                            Thread.currentThread.interrupt()
-
-                        case e: Throwable =>
-                            logger.error("watcher crashed, {}", e)
-                    }
-                }
-            })
-
-            sys.addShutdownHook({
-                logger.info("shutdown watcher")
-
-                watcherThread.interrupt()
-                watcherThread.join()
-            })
-
-            logger.info("watcher is starting")
-
-            watcherThread.start()
+            run(watcher)
         }
+    }
+
+    def run(watcher: LogWatcher) = {
+        lazy val t = new Thread(() => {
+            logger.info("watcher started")
+
+            while (!Thread.interrupted()) {
+                try {
+                    for (log <- watcher.changes) {
+                        lazy val zxid = if (log.records.isEmpty) -1 else log.records.head.header.getZxid
+
+                        logger.info(s"sync log file `${log.name}` @ zxid=$zxid")
+                    }
+                } catch {
+                    case _: InterruptedException =>
+                        logger.info("watcher is closing")
+
+                        watcher.close()
+
+                        logger.info("watcher closed")
+
+                        Thread.currentThread.interrupt()
+
+                    case err: Throwable =>
+                        logger.error(s"watcher crashed, $err")
+                }
+            }
+        })
+
+        sys.addShutdownHook({
+            logger.info("shutdown watcher")
+
+            t.interrupt()
+            t.join()
+        })
+
+        logger.info("watcher is starting")
+
+        t.start()
     }
 }
 
