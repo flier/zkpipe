@@ -39,13 +39,13 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
     private val cis = new CountingInputStream(new FileInputStream(file))
     private val stream = BinaryInputArchive.getArchive(cis)
 
-    lazy val name = file.getName
+    lazy val name: String = file.getName
 
     val header = new FileHeader()
 
     header.deserialize(stream, "fileHeader")
 
-    var position = cis.getCount
+    var position: Long = cis.getCount
 
     if (offset > position) {
         cis.skip(offset-position)
@@ -58,7 +58,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
     val records: Stream[LogRecord] = {
         def next(): Stream[LogRecord] = Try(readRecord()) match {
             case Success(record) => record #:: next()
-            case Failure(err) => {
+            case Failure(err) =>
                 err match {
                     case _: EOFException => logger.debug("EOF reached")
                     case _: CRCException => logger.warn("CRC doesn't match")
@@ -68,7 +68,6 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
                 close()
 
                 Stream.empty
-            }
         }
 
         next()
@@ -127,7 +126,7 @@ class LogBroker(uri: Uri) extends LazyLogging {
     lazy val producer = new KafkaProducer(props)
 }
 
-class LogWatcher(files: Seq[File]) {
+class LogWatcher(files: Seq[File], checkCrc: Boolean) {
     val logger: Logger = Logger[LogWatcher]
 
     val watchFiles: mutable.Map[Path, LogFile] = mutable.Map() ++ (files filter { file =>
@@ -166,29 +165,29 @@ class LogWatcher(files: Seq[File]) {
                 })
 
                 watchEvent.kind match {
-                    case ENTRY_CREATE => {
-                        Some(watchFiles.getOrElseUpdate(filename, new LogFile(filename.toFile)))
-                    }
-                    case ENTRY_DELETE => {
+                    case ENTRY_CREATE =>
+                        Some(watchFiles.getOrElseUpdate(filename, new LogFile(filename.toFile, checkCrc = checkCrc)))
+
+                    case ENTRY_DELETE =>
                         watchFiles.remove(filename).foreach(_.close())
 
                         None
-                    }
-                    case ENTRY_MODIFY => {
-                        val logFile = watchFiles.get(filename) match {
-                            case Some(logFile) => {
-                                logFile.close()
 
-                                new LogFile(logFile.file, offset = logFile.position)
-                            }
-                            case None => new LogFile(filename.toFile)
+                    case ENTRY_MODIFY =>
+                        val logFile = watchFiles.get(filename) match {
+                            case Some(log: LogFile) =>
+                                log.close()
+
+                                new LogFile(log.file, offset = log.position, checkCrc = checkCrc)
+
+                            case None =>
+                                new LogFile(filename.toFile, checkCrc = checkCrc)
                         }
 
                         watchFiles(filename) = logFile
 
                         Some(logFile)
                     }
-                }
             }
 
             Stream.concat(watchEvents) #::: next()
@@ -202,6 +201,7 @@ case class Config(logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   fromZxid: Int = -1,
                   toZxid: Int = Integer.MAX_VALUE,
+                  checkCrc: Boolean = true,
                   kafkaUri: String = null) extends LazyLogging
 {
     lazy val files: Seq[File] = (logFiles ++ logDir) flatMap { file =>
@@ -241,6 +241,10 @@ object Config {
                 .action( (x, c) => c.copy(toZxid = x) )
                 .text("sync end to ZooKeeper transaction id")
 
+            opt[Boolean]("check-crc")
+                .action( (x, c) => c.copy(checkCrc = x) )
+                .text("check record CRC correct")
+
             opt[String]('k', "kafka")
                 .valueName("<uri>")
                 .action( (x, c) => c.copy(kafkaUri = x))
@@ -265,13 +269,13 @@ object LogPipe extends LazyLogging {
         {
             lazy val broker = new LogBroker(config.kafkaUri)
 
-            lazy val watcher = new LogWatcher(config.files)
+            lazy val watcher = new LogWatcher(config.files, checkCrc=config.checkCrc)
 
-            run(watcher)
+            run(broker, watcher)
         }
     }
 
-    def run(watcher: LogWatcher) = {
+    def run(broker: LogBroker, watcher: LogWatcher): Unit = {
         lazy val t = new Thread(() => {
             logger.info("watcher started")
 
