@@ -7,7 +7,8 @@ import java.nio.file.{FileSystems, Path, WatchKey, WatchService}
 import com.typesafe.scalalogging.Logger
 
 import scala.collection.mutable
-
+import scala.collection.JavaConverters._
+import scala.language.postfixOps
 
 class LogWatcher(files: Seq[File], checkCrc: Boolean) {
     val logger: Logger = Logger[LogWatcher]
