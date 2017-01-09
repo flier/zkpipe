@@ -4,16 +4,23 @@ import java.io.File
 
 import com.netaporter.uri.dsl._
 import com.typesafe.scalalogging.LazyLogging
-import scopt.OptionParser
+import scopt.{OptionParser, Read}
 
-import scala.language.postfixOps
+object MessageFormats extends Enumeration {
+    type MessageFormat = Value
+
+    val Pb, Json, Raw = Value
+}
+
+import MessageFormats._
 
 case class Config(logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   fromZxid: Int = -1,
                   toZxid: Int = Integer.MAX_VALUE,
                   checkCrc: Boolean = true,
-                  kafkaUri: String = null) extends LazyLogging
+                  kafkaUri: String = null,
+                  msgFormat: MessageFormat = Pb) extends LazyLogging
 {
     lazy val files: Seq[File] = (logFiles ++ logDir) flatMap { file =>
         if (file.isDirectory)
@@ -34,6 +41,8 @@ case class Config(logFiles: Seq[File] = Seq(),
 
 object Config {
     def parse(args: Array[String]): Option[Config] = {
+        implicit val messageFormatRead: Read[MessageFormat] = Read.reads(MessageFormats withName _)
+
         val parser = new OptionParser[Config]("zkpipe") {
             head("zkpipe", "0.1")
 
@@ -61,6 +70,11 @@ object Config {
                 .action( (x, c) => c.copy(kafkaUri = x))
                 .text("sync records to Kafka")
 
+            opt[MessageFormat]('f', "msg-format")
+                .valueName("<format>")
+                .action( (x, c) => c.copy(msgFormat = x))
+                .text("serialize message in [pb, json, raw] format (default: pb)")
+
             help("help").abbr("h").text("show usage screen")
 
             arg[File]("<file>...")
@@ -78,7 +92,12 @@ object LogPipe extends LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
-            lazy val broker = new LogBroker(config.kafkaUri)
+            lazy val broker = new LogBroker(config.kafkaUri,
+                                            valueSerializer = config.msgFormat match {
+                                                case Pb => new ProtoBufSerializer
+                                                case Json => new JsonSerializer
+                                                case Raw => new RawSerializer
+                                            })
 
             lazy val watcher = new LogWatcher(config.files, checkCrc=config.checkCrc)
 

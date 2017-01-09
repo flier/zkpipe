@@ -6,9 +6,11 @@ import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig}
-import org.apache.kafka.common.serialization.ByteArraySerializer
+import org.apache.kafka.common.serialization.{ByteArraySerializer, Serializer}
 
-class LogBroker(uri: Uri) extends LazyLogging {
+class LogBroker(uri: Uri,
+                keySerializer: Serializer[Array[Byte]] = new ByteArraySerializer(),
+                valueSerializer: Serializer[LogRecord]) extends LazyLogging {
     require(uri.scheme.contains("kafka"), "Have to starts with kafka://")
 
     private lazy val props = {
@@ -26,5 +28,5 @@ class LogBroker(uri: Uri) extends LazyLogging {
     lazy val topic: String = uri.path
 
     lazy val consumer = new KafkaConsumer(props)
-    lazy val producer = new KafkaProducer(props, new ByteArraySerializer(), new ProtoBufSerializer())
+    lazy val producer = new KafkaProducer(props, keySerializer, valueSerializer)
 }
