@@ -8,9 +8,13 @@ import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer.{KafkaProducer, ProducerConfig}
 import org.apache.kafka.common.serialization.{ByteArraySerializer, Serializer}
 
+trait Broker {
+
+}
+
 class LogBroker(uri: Uri,
                 keySerializer: Serializer[Array[Byte]] = new ByteArraySerializer(),
-                valueSerializer: Serializer[LogRecord]) extends LazyLogging {
+                valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging {
     require(uri.scheme.contains("kafka"), "Have to starts with kafka://")
 
     private lazy val props = {

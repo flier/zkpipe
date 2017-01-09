@@ -1,19 +1,21 @@
 package zkpipe
 
-import java.io.File
+import java.io.{Closeable, File}
 import java.nio.file.StandardWatchEventKinds.{ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY}
 import java.nio.file.{FileSystems, Path, WatchKey, WatchService}
 
-import com.typesafe.scalalogging.Logger
+import com.typesafe.scalalogging.LazyLogging
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.language.postfixOps
 
-class LogWatcher(files: Seq[File], checkCrc: Boolean) {
-    val logger: Logger = Logger[LogWatcher]
+trait Watcher extends Closeable {
+    val changes: Stream[LogFile]
+}
 
-    val watchFiles: mutable.Map[Path, LogFile] = mutable.Map() ++ (files filter { file =>
+class LogWatcher(files: Seq[File], checkCrc: Boolean) extends Watcher with LazyLogging{
+    val watchFiles: mutable.Map[Path, LogFile] = mutable.Map.empty ++ (files filter { file =>
         file.isFile && file.canRead && new LogFile(file).isValid
     } map { file =>
         (file.toPath, new LogFile(file))
@@ -31,11 +33,11 @@ class LogWatcher(files: Seq[File], checkCrc: Boolean) {
         (dir.register(watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY), dir)
     } toMap
 
-    def close(): Unit = {
+    override def close(): Unit = {
         for ( (_, logFile) <- watchFiles ) { logFile.close() }
     }
 
-    val changes: Stream[LogFile] = {
+    override val changes: Stream[LogFile] = {
         def next(): Stream[LogFile] = {
             val watchKey = watcher.take()
 
