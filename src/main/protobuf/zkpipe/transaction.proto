@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package zkpipe;
+
+message Id {
+    string scheme = 1;
+    string id = 2;
+}
+message ACL {
+    int32 perms = 1;
+    Id id = 2;
+}
+
+message CreateSession {
+    int32 timeOut = 1;
+}
+
+message Create {
+    string path = 1;
+    bytes data = 2;
+    repeated ACL acl = 3;
+    bool ephemeral = 4;
+    int32 parentCVersion = 5;
+}
+
+message CreateContainer {
+    string path = 1;
+    bytes data = 2;
+    repeated ACL acl = 3;
+    int32 parentCVersion = 4;
+}
+
+message Delete {
+    string path = 1;
+}
+
+message SetData {
+    string path = 1;
+    bytes data = 2;
+    int32 version = 3;
+}
+
+message CheckVersion {
+    string path = 1;
+    int32 version = 2;
+}
+
+message SetACL {
+    string path = 1;
+    repeated ACL acl = 2;
+    int32 version = 3;
+}
+
+message Error {
+    int32 errno = 1;
+}
+
+message Multi {
+    repeated Transaction transactions = 1;
+}
+
+message Transaction {
+    message Raw {
+        int32 type = 1;
+        bytes data = 2;
+    }
+    oneof record {
+        Create create = 1;
+        Delete delete = 2;
+        SetData setData = 3;
+        CheckVersion checkVersion = 4;
+        SetACL setACL = 5;
+        Multi multi = 6;
+        CreateContainer createContainer = 7;
+        CreateSession createSession = 8;
+        Error error = 9;
+        Raw raw = 10;
+    }
+}

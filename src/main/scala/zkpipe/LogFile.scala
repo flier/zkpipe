@@ -9,6 +9,7 @@ import org.apache.jute.BinaryInputArchive
 import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
 import org.apache.zookeeper.server.util.SerializeUtils
 import org.apache.zookeeper.txn.TxnHeader
+import shapeless.record
 
 import scala.util.{Failure, Success, Try}
 
@@ -61,26 +62,25 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
 
     def readRecord(): LogRecord = {
         val crcValue = stream.readLong("crcValue")
-        val buf = stream.readBuffer("txnEntry")
+        val bytes = stream.readBuffer("txnEntry")
 
-        if (buf.isEmpty) throw new EOFException()
+        if (bytes.isEmpty) throw new EOFException()
 
         if (stream.readByte("EOR") != 'B') throw EORException()
 
         if (checkCrc) {
             val crc = new Adler32()
 
-            crc.update(buf, 0, buf.length)
+            crc.update(bytes, 0, bytes.length)
 
             if (crc.getValue != crcValue) throw CRCException()
         }
 
-        val header = new TxnHeader()
-        val record = SerializeUtils.deserializeTxn(buf, header)
+        val record = new LogRecord(bytes)
 
         position = cis.getCount
 
-        new LogRecord(header, record)
+        record
     }
 
     override def close(): Unit = cis.close()

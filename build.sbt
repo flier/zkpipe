@@ -32,6 +32,8 @@ lazy val librarySettings = Seq(
         // datetime
         "joda-time" % "joda-time" % "2.9.7",
         "com.github.nscala-time" %% "nscala-time" % "2.16.0",
+        // JSON encoding
+        "org.json4s" %% "json4s-native" % "3.5.0",
         // protobuf encoding
         "com.google.protobuf" % "protobuf-java" % "3.1.0",
         // For finding google/protobuf/descriptor.proto
