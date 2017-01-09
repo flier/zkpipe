@@ -4,12 +4,9 @@ import java.io.{Closeable, EOFException, File, FileInputStream}
 import java.util.zip.Adler32
 
 import com.google.common.io.CountingInputStream
-import com.typesafe.scalalogging.Logger
+import com.typesafe.scalalogging.LazyLogging
 import org.apache.jute.BinaryInputArchive
 import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
-import org.apache.zookeeper.server.util.SerializeUtils
-import org.apache.zookeeper.txn.TxnHeader
-import shapeless.record
 
 import scala.util.{Failure, Success, Try}
 
@@ -19,11 +16,10 @@ case class EORException() extends Exception("Last transaction was partial")
 
 case class IteratorException() extends Exception("iterator has finished")
 
-class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extends Closeable {
+class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extends Closeable with LazyLogging {
     require(file.isFile, "Have to be a regular file")
     require(file.canRead, "Have to be readable")
 
-    private val logger = Logger[LogFile]
     private val cis = new CountingInputStream(new FileInputStream(file))
     private val stream = BinaryInputArchive.getArchive(cis)
 

@@ -2,14 +2,17 @@ package zkpipe
 
 import java.io.File
 
-import com.netaporter.uri.dsl._
+import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
+import org.apache.kafka.common.serialization.Serializer
 import scopt.{OptionParser, Read}
+
+import scala.collection.mutable
 
 object MessageFormats extends Enumeration {
     type MessageFormat = Value
 
-    val Pb, Json, Raw = Value
+    val pb, json, raw = Value
 }
 
 import MessageFormats._
@@ -19,8 +22,8 @@ case class Config(logFiles: Seq[File] = Seq(),
                   fromZxid: Int = -1,
                   toZxid: Int = Integer.MAX_VALUE,
                   checkCrc: Boolean = true,
-                  kafkaUri: String = null,
-                  msgFormat: MessageFormat = Pb) extends LazyLogging
+                  kafkaUri: Uri = null,
+                  msgFormat: MessageFormat = pb) extends LazyLogging
 {
     lazy val files: Seq[File] = (logFiles ++ logDir) flatMap { file =>
         if (file.isDirectory)
@@ -41,38 +44,41 @@ case class Config(logFiles: Seq[File] = Seq(),
 
 object Config {
     def parse(args: Array[String]): Option[Config] = {
-        implicit val messageFormatRead: Read[MessageFormat] = Read.reads(MessageFormats withName _)
+        implicit val messageFormatRead: Read[MessageFormat] = Read.reads(MessageFormats withName)
+        implicit val uriRead: Read[Uri] = Read.reads(Uri.parse)
 
         val parser = new OptionParser[Config]("zkpipe") {
             head("zkpipe", "0.1")
 
             opt[File]('d', "log-dir")
                 .valueName("<path>")
-                .action( (x, c) => c.copy(logDir = Some(x)) )
+                .action((x, c) => c.copy(logDir = Some(x)))
+                .validate(c => if (c.isDirectory) success else failure("Option `log-dir` should be a directory"))
                 .text("Zookeeper log directory")
 
             opt[Int]('f', "from")
                 .valueName("<zxid>")
-                .action( (x, c) => c.copy(fromZxid = x) )
+                .action((x, c) => c.copy(fromZxid = x))
                 .text("sync start from ZooKeeper transaction id")
 
             opt[Int]('t', "to")
                 .valueName("<zxid>")
-                .action( (x, c) => c.copy(toZxid = x) )
+                .action((x, c) => c.copy(toZxid = x))
                 .text("sync end to ZooKeeper transaction id")
 
             opt[Boolean]("check-crc")
-                .action( (x, c) => c.copy(checkCrc = x) )
+                .action((x, c) => c.copy(checkCrc = x))
                 .text("check record CRC correct")
 
-            opt[String]('k', "kafka")
+            opt[Uri]('k', "kafka")
                 .valueName("<uri>")
-                .action( (x, c) => c.copy(kafkaUri = x))
+                .action((x, c) => c.copy(kafkaUri = x))
+                .validate(c => if (c.scheme.contains("kafka")) success else failure("Option `kafka` scheme should be `kafka://`"))
                 .text("sync records to Kafka")
 
-            opt[MessageFormat]('f', "msg-format")
+            opt[MessageFormat]("msg-format")
                 .valueName("<format>")
-                .action( (x, c) => c.copy(msgFormat = x))
+                .action((x, c) => c.copy(msgFormat = x))
                 .text("serialize message in [pb, json, raw] format (default: pb)")
 
             help("help").abbr("h").text("show usage screen")
@@ -81,6 +87,7 @@ object Config {
                 .unbounded()
                 .optional()
                 .action( (x, c) => c.copy(logFiles = c.logFiles :+ x) )
+                .validate(c => if (c.isFile && c.canRead) success else failure("Option `file` should be a readable file"))
                 .text("sync Zookeeper log files")
         }
 
@@ -88,16 +95,22 @@ object Config {
     }
 }
 
+class LogConsole(serializer: Serializer[LogRecord]) extends Broker with LazyLogging {
+
+}
+
 object LogPipe extends LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
-            lazy val broker = new LogBroker(config.kafkaUri,
-                                            valueSerializer = config.msgFormat match {
-                                                case Pb => new ProtoBufSerializer
-                                                case Json => new JsonSerializer
-                                                case Raw => new RawSerializer
-                                            })
+            lazy val broker = if (config.kafkaUri != null)
+                new LogBroker(config.kafkaUri, valueSerializer = config.msgFormat match {
+                    case `pb` => new ProtoBufSerializer
+                    case `json` => new JsonSerializer
+                    case `raw` => new RawSerializer
+                })
+            else
+                new LogConsole(new JsonSerializer(mutable.Map("pretty" -> true)))
 
             lazy val watcher = new LogWatcher(config.files, checkCrc=config.checkCrc)
 
@@ -105,7 +118,7 @@ object LogPipe extends LazyLogging {
         }
     }
 
-    def run(config: Config, broker: LogBroker, watcher: LogWatcher): Unit = {
+    def run(config: Config, broker: Broker, watcher: Watcher): Unit = {
         lazy val t = new Thread(() => {
             logger.info("watcher started")
 

@@ -8,6 +8,7 @@ import org.apache.zookeeper.ZooDefs.OpCode
 import com.github.nscala_time.time.Imports._
 import com.google.common.io.BaseEncoding
 import com.google.protobuf.ByteString
+import com.typesafe.scalalogging.LazyLogging
 import org.apache.jute.BinaryInputArchive
 import org.apache.kafka.common.serialization.Serializer
 import org.apache.zookeeper.server.util.SerializeUtils
@@ -18,10 +19,11 @@ import org.json4s.jackson.JsonMethods._
 import zkpipe.TransactionOuterClass._
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.language.postfixOps
 import scala.util.Try
 
-class LogRecord(val bytes: Array[Byte]) {
+class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
     object TxnType extends Enumeration {
         type Type = Value
 
@@ -275,7 +277,7 @@ object JsonConverters {
     }
 }
 
-class ProtoBufSerializer extends Serializer[LogRecord] {
+class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
@@ -297,11 +299,15 @@ class ProtoBufSerializer extends Serializer[LogRecord] {
     override def close(): Unit = {}
 }
 
-class JsonSerializer extends Serializer[LogRecord] {
-    var renderPretty = false
+class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, Any]())
+    extends Serializer[LogRecord] with LazyLogging
+{
+    val PROPERTY_PRETTY = "pretty"
+
+    lazy val propPretty = Try(props.get(PROPERTY_PRETTY).toString.toBoolean).getOrElse(false)
 
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {
-        renderPretty = Try(configs.get("pretty").toString.toBoolean).getOrElse(false)
+        props ++= configs.asScala.toMap
     }
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
@@ -317,13 +323,13 @@ class JsonSerializer extends Serializer[LogRecord] {
             case r: MultiTxn => toJson(r)
         })
 
-        (if (renderPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
+        (if (propPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
     }
 
     override def close(): Unit = {}
 }
 
-class RawSerializer extends Serializer[LogRecord] {
+class RawSerializer extends Serializer[LogRecord] with LazyLogging {
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 
     override def serialize(topic: String, data: LogRecord): Array[Byte] = { data.bytes }
