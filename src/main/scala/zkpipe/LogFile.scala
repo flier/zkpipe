@@ -17,7 +17,7 @@ case class EORException() extends Exception("Last transaction was partial")
 
 case class IteratorException() extends Exception("iterator has finished")
 
-object LogFileMetrics {
+object LogFile {
     val SUBSYSTEM: String = "file"
     val opening: Gauge = Gauge.build().subsystem(SUBSYSTEM).name("opening").help("opening files").register()
     val crcErrors: Counter = Counter.build().subsystem(SUBSYSTEM).name("crc_errors").labelNames("filename").help("read record failed, CRC error").register()
@@ -27,7 +27,7 @@ object LogFileMetrics {
 }
 
 class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extends Closeable with LazyLogging {
-    import LogFileMetrics._
+    import LogFile._
 
     require(file.isFile, "Have to be a regular file")
     require(file.canRead, "Have to be readable")

@@ -6,14 +6,14 @@ import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.{Counter, Summary}
 import org.apache.kafka.common.serialization.Serializer
 
-object RawSerializerMetrics {
+object RawSerializer {
     val SUBSYSTEM = "raw"
     val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").help("encoded raw messages").register()
     val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
 }
 
 class RawSerializer extends Serializer[LogRecord] with LazyLogging {
-    import RawSerializerMetrics._
+    import RawSerializer._
 
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 

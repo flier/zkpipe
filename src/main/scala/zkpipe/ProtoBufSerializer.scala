@@ -147,14 +147,14 @@ object ProtoBufConverters {
     }
 }
 
-object ProtoBufSerializerMetrics {
+object ProtoBufSerializer {
     val SUBSYSTEM: String = "pb"
     val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded protobuf messages").register()
     val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded protobuf messages").register()
 }
 
 class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
-    import ProtoBufSerializerMetrics._
+    import ProtoBufSerializer._
 
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 

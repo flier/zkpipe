@@ -18,7 +18,7 @@ trait Broker {
     def send(log: LogRecord): Future[LogMetadata]
 }
 
-object LogBrokerMetrics {
+object LogBroker {
     val SUBSYSTEM: String = "kafka"
     val sending: Gauge = Gauge.build().subsystem(SUBSYSTEM).name("sending").labelNames("topic").help("Kafka sending messages").register()
     val sent: Counter = Counter.build().subsystem(SUBSYSTEM).name("sent").labelNames("topic").help("Kafka send succeeded messages").register()
@@ -26,8 +26,10 @@ object LogBrokerMetrics {
     val sendLatency: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("send_latency").labelNames("topic").help("Kafka send latency").register()
 }
 
-class LogBroker(uri: Uri,
-                valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging {
+class LogBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging
+{
+    import LogBroker._
+
     require(uri.scheme.contains("kafka"), "Have to starts with kafka://")
 
     private lazy val props = {
@@ -47,8 +49,6 @@ class LogBroker(uri: Uri,
     lazy val producer = new KafkaProducer(props, new LongSerializer(), valueSerializer)
 
     override def send(log: LogRecord): Future[LogMetadata] = {
-        import LogBrokerMetrics._
-
         val promise = Promise[LogMetadata]()
 
         sending.labels(topic).inc()

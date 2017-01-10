@@ -11,13 +11,13 @@ import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.language.postfixOps
 
-object LogWatcherMetrics {
+object LogWatcher {
     val SUBSYSTEM = "watcher"
     val fileChanges: Counter = Counter.build().subsystem(SUBSYSTEM).name("changes").labelNames("dir", "kind").help("watched file changes").register()
 }
 
 class LogWatcher(dir: File, checkCrc: Boolean) extends Closeable with LazyLogging{
-    import LogWatcherMetrics._
+    import LogWatcher._
 
     require(dir.isDirectory, "can only watch directory")
 

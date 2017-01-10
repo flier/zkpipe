@@ -10,13 +10,15 @@ import org.apache.zookeeper.txn._
 
 import scala.language.postfixOps
 
-object LogRecordMetrics {
+object LogRecord{
     val SUBSYSTEM: String = "decode"
     val decodeRecords: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("decoded records").register()
     val decodeBytes: Counter = Counter.build().subsystem(SUBSYSTEM).name("bytes").help("decoded bytes").register()
 }
 
 class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
+    import LogRecord._
+
     object TxnType extends Enumeration {
         type Type = Value
 
@@ -49,8 +51,6 @@ class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
     }
 
     import TxnType._
-
-    import LogRecordMetrics._
 
     val header: TxnHeader = new TxnHeader()
     val record: Record = SerializeUtils.deserializeTxn(bytes, header)

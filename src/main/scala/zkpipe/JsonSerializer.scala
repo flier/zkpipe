@@ -96,7 +96,7 @@ object JsonConverters {
     }
 }
 
-object JsonSerializerMetrics {
+object JsonSerializer {
     val SUBSYSTEM: String = "json"
     val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded JSON messages").register()
     val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
@@ -105,7 +105,7 @@ object JsonSerializerMetrics {
 class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, Any]())
     extends Serializer[LogRecord] with LazyLogging
 {
-    import JsonSerializerMetrics._
+    import JsonSerializer._
 
     val PROPERTY_PRETTY = "pretty"
 
