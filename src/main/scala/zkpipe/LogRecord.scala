@@ -9,7 +9,8 @@ import com.github.nscala_time.time.Imports._
 import com.google.common.io.BaseEncoding
 import com.google.protobuf.ByteString
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.jute.BinaryInputArchive
+import io.prometheus.client.{Counter, Summary}
+import org.apache.jute.{BinaryInputArchive, Record}
 import org.apache.kafka.common.serialization.Serializer
 import org.apache.zookeeper.server.util.SerializeUtils
 import org.apache.zookeeper.txn._
@@ -22,6 +23,12 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.language.postfixOps
 import scala.util.Try
+
+object LogRecordMetrics {
+    val SUBSYSTEM: String = "decode"
+    val decodeRecords: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("decoded records").register()
+    val decodeBytes: Counter = Counter.build().subsystem(SUBSYSTEM).name("bytes").help("decoded bytes").register()
+}
 
 class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
     object TxnType extends Enumeration {
@@ -57,14 +64,28 @@ class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
 
     import TxnType._
 
-    val header = new TxnHeader()
-    val record = SerializeUtils.deserializeTxn(bytes, header)
+    import LogRecordMetrics._
+
+    val header: TxnHeader = new TxnHeader()
+    val record: Record = SerializeUtils.deserializeTxn(bytes, header)
 
     lazy val session: Long = header.getClientId
     lazy val cxid: Int = header.getCxid
     lazy val zxid: Long = header.getZxid
     lazy val time: DateTime = header.getTime.toDateTime
     lazy val opcode: Type = apply(header.getType)
+    lazy val path: Option[String] = record match {
+        case r: CreateTxn  => Some(r.getPath)
+        case r: CreateContainerTxn  => Some(r.getPath)
+        case r: DeleteTxn  => Some(r.getPath)
+        case r: SetDataTxn  => Some(r.getPath)
+        case r: CheckVersionTxn  => Some(r.getPath)
+        case r: SetACLTxn  => Some(r.getPath)
+        case _ => None
+    }
+
+    decodeRecords.labels(opcode.toString).inc()
+    decodeBytes.inc(bytes.length)
 }
 
 import ProtoBufConverters._
@@ -277,62 +298,118 @@ object JsonConverters {
     }
 }
 
+object ProtoBufSerializerMetrics {
+    val SUBSYSTEM: String = "pb"
+    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded protobuf messages").register()
+    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded protobuf messages").register()
+}
+
 class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
+    import ProtoBufSerializerMetrics._
+
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
         val txn: Transaction = log.record match {
-            case r: CreateSessionTxn => toProtoBuf(r)
-            case r: CreateTxn  => toProtoBuf(r)
-            case r: CreateContainerTxn  => toProtoBuf(r)
-            case r: DeleteTxn  => toProtoBuf(r)
-            case r: SetDataTxn  => toProtoBuf(r)
-            case r: CheckVersionTxn  => toProtoBuf(r)
-            case r: SetACLTxn  => toProtoBuf(r)
-            case r: ErrorTxn => toProtoBuf(r)
-            case r: MultiTxn => toProtoBuf(r)
+            case r: CreateTxn  => records.labels("create").inc(); toProtoBuf(r)
+            case r: CreateContainerTxn  => records.labels("createContainer").inc(); toProtoBuf(r)
+            case r: DeleteTxn  => records.labels("delete").inc(); toProtoBuf(r)
+            case r: SetDataTxn  => records.labels("setData").inc(); toProtoBuf(r)
+            case r: CheckVersionTxn  => records.labels("checkVersion").inc(); toProtoBuf(r)
+            case r: SetACLTxn  => records.labels("setACL").inc(); toProtoBuf(r)
+            case r: CreateSessionTxn => records.labels("createSession").inc(); toProtoBuf(r)
+            case r: ErrorTxn => records.labels("error").inc(); toProtoBuf(r)
+            case r: MultiTxn => records.labels("multi").inc(); toProtoBuf(r)
         }
 
-        txn.toByteArray
+        val msg: Message = Message.newBuilder().setHeader(
+            Header.newBuilder()
+                .setSession(log.session)
+                .setCxid(log.cxid)
+                .setZxid(log.zxid)
+                .setTime(log.time.getMillis)
+                .setPath(log.path.getOrElse(""))
+                .setType(Transaction.Type.forNumber(log.opcode.id))
+        ).setRecord(txn).build()
+
+        val bytes = msg.toByteArray
+
+        size.observe(bytes.length)
+
+        bytes
     }
 
     override def close(): Unit = {}
 }
 
+object JsonSerializerMetrics {
+    val SUBSYSTEM: String = "json"
+    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded JSON messages").register()
+    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
+}
+
 class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, Any]())
     extends Serializer[LogRecord] with LazyLogging
 {
+    import JsonSerializerMetrics._
+
     val PROPERTY_PRETTY = "pretty"
 
-    lazy val propPretty = Try(props.get(PROPERTY_PRETTY).toString.toBoolean).getOrElse(false)
+    lazy val printPretty: Boolean = Try(props.get(PROPERTY_PRETTY).toString.toBoolean).getOrElse(false)
 
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {
         props ++= configs.asScala.toMap
     }
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
-        val json: JValue = render(log.record match {
-            case r: CreateSessionTxn => toJson(r)
-            case r: CreateTxn => toJson(r)
-            case r: CreateContainerTxn  => toJson(r)
-            case r: DeleteTxn => toJson(r)
-            case r: SetDataTxn  => toJson(r)
-            case r: CheckVersionTxn  => toJson(r)
-            case r: SetACLTxn => toJson(r)
-            case r: ErrorTxn  => toJson(r)
-            case r: MultiTxn => toJson(r)
-        })
+        val record: JValue = log.record match {
+            case r: CreateTxn => records.labels("create").inc(); toJson(r)
+            case r: CreateContainerTxn => records.labels("createContainer").inc(); toJson(r)
+            case r: DeleteTxn => records.labels("delete").inc(); toJson(r)
+            case r: SetDataTxn => records.labels("setData").inc(); toJson(r)
+            case r: CheckVersionTxn => records.labels("checkVersion").inc(); toJson(r)
+            case r: SetACLTxn => records.labels("setACL").inc(); toJson(r)
+            case r: CreateSessionTxn => records.labels("createSession").inc(); toJson(r)
+            case r: ErrorTxn => records.labels("error").inc(); toJson(r)
+            case r: MultiTxn => records.labels("multi").inc(); toJson(r)
+        }
 
-        (if (propPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
+        val json: JValue = render(
+            ("session" -> log.session) ~
+            ("cxid" -> log.cxid) ~
+            ("zxid" -> log.zxid) ~
+            ("time" -> log.time.getMillis) ~
+            ("path" -> log.path) ~
+            ("type" -> log.opcode.toString) ~
+            ("record" -> record)
+        )
+
+        val bytes = (if (printPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
+
+        size.observe(bytes.length)
+
+        bytes
     }
 
     override def close(): Unit = {}
 }
 
+object RawSerializerMetrics {
+    val SUBSYSTEM = "raw"
+    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").help("encoded raw messages").register()
+    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
+}
+
 class RawSerializer extends Serializer[LogRecord] with LazyLogging {
+    import RawSerializerMetrics._
+
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 
-    override def serialize(topic: String, data: LogRecord): Array[Byte] = { data.bytes }
+    override def serialize(topic: String, data: LogRecord): Array[Byte] = {
+        records.inc()
+
+        data.bytes
+    }
 
     override def close(): Unit = {}
 }

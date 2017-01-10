@@ -4,10 +4,12 @@ import java.io.File
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
-import org.apache.kafka.common.serialization.Serializer
 import scopt.{OptionParser, Read}
+import java.nio.charset.StandardCharsets.UTF_8
 
-import scala.collection.mutable
+import org.apache.kafka.common.serialization.Serializer
+
+import scala.concurrent.Future
 
 object MessageFormats extends Enumeration {
     type MessageFormat = Value
@@ -19,8 +21,8 @@ import MessageFormats._
 
 case class Config(logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
-                  fromZxid: Int = -1,
-                  toZxid: Int = Integer.MAX_VALUE,
+                  zxidRange: Range = 0 until Int.MaxValue,
+                  pathPrefix: String = "/",
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
                   msgFormat: MessageFormat = pb) extends LazyLogging
@@ -46,6 +48,13 @@ object Config {
     def parse(args: Array[String]): Option[Config] = {
         implicit val messageFormatRead: Read[MessageFormat] = Read.reads(MessageFormats withName)
         implicit val uriRead: Read[Uri] = Read.reads(Uri.parse)
+        implicit val rangeRead: Read[Range] = Read.reads(s =>
+            s.split(':') match {
+                case Array(low) => low.toInt until Int.MaxValue
+                case Array("", upper) => 0 until upper.toInt
+                case Array(low, upper) => low.toInt until upper.toInt
+            }
+        )
 
         val parser = new OptionParser[Config]("zkpipe") {
             head("zkpipe", "0.1")
@@ -56,19 +65,19 @@ object Config {
                 .validate(c => if (c.isDirectory) success else failure("Option `log-dir` should be a directory"))
                 .text("Zookeeper log directory")
 
-            opt[Int]('f', "from")
+            opt[Range]('r', "range")
                 .valueName("<zxid>")
-                .action((x, c) => c.copy(fromZxid = x))
-                .text("sync start from ZooKeeper transaction id")
+                .action((x, c) => c.copy(zxidRange = x))
+                .text("sync ZooKeeper transactions with id in the range")
 
-            opt[Int]('t', "to")
-                .valueName("<zxid>")
-                .action((x, c) => c.copy(toZxid = x))
-                .text("sync end to ZooKeeper transaction id")
+            opt[String]('p', "prefix")
+                .valueName("<path>")
+                .action((x, c) => c.copy(pathPrefix = x))
+                .text("sync Zookeeper transactions with path prefix")
 
             opt[Boolean]("check-crc")
                 .action((x, c) => c.copy(checkCrc = x))
-                .text("check record CRC correct")
+                .text("check record data CRC correct")
 
             opt[Uri]('k', "kafka")
                 .valueName("<uri>")
@@ -76,7 +85,7 @@ object Config {
                 .validate(c => if (c.scheme.contains("kafka")) success else failure("Option `kafka` scheme should be `kafka://`"))
                 .text("sync records to Kafka")
 
-            opt[MessageFormat]("msg-format")
+            opt[MessageFormat]('f', "msg-format")
                 .valueName("<format>")
                 .action((x, c) => c.copy(msgFormat = x))
                 .text("serialize message in [pb, json, raw] format (default: pb)")
@@ -95,70 +104,69 @@ object Config {
     }
 }
 
-class LogConsole(serializer: Serializer[LogRecord]) extends Broker with LazyLogging {
+class LogConsole(valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging {
+    case class ConsoleMetadata(log: LogRecord) extends LogMetadata
 
+    override def send(log: LogRecord): Future[LogMetadata] = {
+        println(new String(valueSerializer.serialize("console", log), UTF_8))
+
+        Future successful ConsoleMetadata(log)
+    }
 }
 
 object LogPipe extends LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
-            lazy val broker = if (config.kafkaUri != null)
-                new LogBroker(config.kafkaUri, valueSerializer = config.msgFormat match {
-                    case `pb` => new ProtoBufSerializer
-                    case `json` => new JsonSerializer
-                    case `raw` => new RawSerializer
-                })
-            else
-                new LogConsole(new JsonSerializer(mutable.Map("pretty" -> true)))
+            val changedFiles = config.logDir match {
+                case Some(dir) => new LogWatcher(dir, checkCrc=config.checkCrc).changedFiles
+                case _ => config.logFiles.sorted map { file => new LogFile(file) }
+            }
 
-            lazy val watcher = new LogWatcher(config.files, checkCrc=config.checkCrc)
+            val valueSerializer = config.msgFormat match {
+                case `pb` => new ProtoBufSerializer
+                case `json` => new JsonSerializer
+                case `raw` => new RawSerializer
+            }
 
-            run(config, broker, watcher)
+            val broker = if (config.kafkaUri != null) {
+                new LogBroker(config.kafkaUri, valueSerializer)
+            } else {
+                new LogConsole(valueSerializer)
+            }
+
+            run(changedFiles,
+                broker,
+                zxidRange = config.zxidRange,
+                pathPrefix = config.pathPrefix)
         }
     }
 
-    def run(config: Config, broker: Broker, watcher: Watcher): Unit = {
+    def run(changedFiles: Traversable[LogFile], broker: Broker, zxidRange: Range, pathPrefix: String): Unit = {
         lazy val t = new Thread(() => {
-            logger.info("watcher started")
+            try {
+                changedFiles foreach { log =>
+                    logger.info(s"sync log file ${log.filename} ...")
 
-            while (!Thread.interrupted()) {
-                try {
-                    watcher.changes foreach { log =>
-                        lazy val zxid = if (log.records.isEmpty) -1 else log.records.head.header.getZxid
-
-                        logger.info(s"sync log file `${log.name}` @ zxid=$zxid")
-
-                        log.records filter { record =>
-                            config.toZxid until config.fromZxid contains record.zxid
-                        } foreach { record =>
-
-                        }
+                    log.records filter { r =>
+                        (zxidRange contains r.zxid) && r.path.forall(_.startsWith(pathPrefix))
+                    } foreach { r =>
+                        broker.send(r)
                     }
-                } catch {
-                    case _: InterruptedException =>
-                        logger.info("watcher is closing")
-
-                        watcher.close()
-
-                        logger.info("watcher closed")
-
-                        Thread.currentThread.interrupt()
-
-                    case err: Throwable =>
-                        logger.error(s"watcher crashed, $err")
                 }
+            } catch {
+                case _: InterruptedException =>
+                    Thread.currentThread.interrupt()
+
+                case err: Throwable =>
+                    logger.error(s"crashed, $err")
             }
         })
 
         sys.addShutdownHook({
-            logger.info("shutdown watcher")
-
             t.interrupt()
             t.join()
         })
-
-        logger.info("watcher is starting")
 
         t.start()
     }

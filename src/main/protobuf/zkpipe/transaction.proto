@@ -60,8 +60,37 @@ message Multi {
 }
 
 message Transaction {
+    enum Type {
+        NOTIFICATION = 0;
+        CREATE = 1;
+        DELETE = 2;
+        EXISTS = 3;
+        GETDATA = 4;
+        SETDATA = 5;
+        GETACL = 6;
+        SETACL = 7;
+        GETCHILDREN = 8;
+        SYNC = 9;
+        PING = 11;
+        GETCHILDREN2 = 12;
+        CHECK = 13;
+        MULTI = 14;
+        CREATE2 = 15;
+        RECONFIG = 16;
+        CHECKWATCHES = 17;
+        REMOVEWATCHES = 18;
+        CREATECONTAINER = 19;
+        DELETECONTAINER = 20;
+        AUTH = 100;
+        SETWATCHES = 101;
+        SASL = 102;
+        CREATESESSION = -10;
+        CLOSESESSION = -11;
+        ERROR = -1;
+    }
+
     message Raw {
-        int32 type = 1;
+        Type type = 1;
         bytes data = 2;
     }
     oneof record {
@@ -76,4 +105,18 @@ message Transaction {
         Error error = 9;
         Raw raw = 10;
     }
+}
+
+message Header {
+    int64 session = 1;
+    int32 cxid = 2;
+    int64 zxid = 3;
+    int64 time = 4;
+    string path = 5;
+    Transaction.Type type = 6;
+}
+
+message Message {
+    Header header = 1;
+    Transaction record = 2;
 }

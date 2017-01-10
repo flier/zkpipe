@@ -5,6 +5,7 @@ import java.util.zip.Adler32
 
 import com.google.common.io.CountingInputStream
 import com.typesafe.scalalogging.LazyLogging
+import io.prometheus.client.{Counter, Gauge, Summary}
 import org.apache.jute.BinaryInputArchive
 import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
 
@@ -16,14 +17,27 @@ case class EORException() extends Exception("Last transaction was partial")
 
 case class IteratorException() extends Exception("iterator has finished")
 
+object LogFileMetrics {
+    val SUBSYSTEM: String = "file"
+    val opening: Gauge = Gauge.build().subsystem(SUBSYSTEM).name("opening").help("opening files").register()
+    val crcErrors: Counter = Counter.build().subsystem(SUBSYSTEM).name("crc_errors").labelNames("filename").help("read record failed, CRC error").register()
+    val readBytes: Counter = Counter.build().subsystem(SUBSYSTEM).name("read_bytes").labelNames("filename").help("read bytes").register()
+    val readRecords: Counter = Counter.build().subsystem(SUBSYSTEM).name("read_records").labelNames("filename").help("read records").register()
+    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("record size").register()
+}
+
 class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extends Closeable with LazyLogging {
+    import LogFileMetrics._
+
     require(file.isFile, "Have to be a regular file")
     require(file.canRead, "Have to be readable")
+
+    logger.debug(s"opening log file $filename ...")
 
     private val cis = new CountingInputStream(new FileInputStream(file))
     private val stream = BinaryInputArchive.getArchive(cis)
 
-    lazy val name: String = file.getName
+    lazy val filename: String = file.getName
 
     val header = new FileHeader()
 
@@ -32,10 +46,15 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
     var position: Long = cis.getCount
 
     if (offset > position) {
+        logger.debug(s"skip to offset $offset")
+
         cis.skip(offset-position)
 
         position = cis.getCount
     }
+
+    opening.inc()
+    readBytes.labels(filename).inc(position)
 
     def isValid: Boolean = header.getMagic == FileTxnLog.TXNLOG_MAGIC
 
@@ -45,7 +64,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
             case Failure(err) =>
                 err match {
                     case _: EOFException => logger.debug("EOF reached")
-                    case e: Exception => logger.warn(e.getMessage)
+                    case e: Exception => logger.warn(s"read failed, ${e.getMessage}")
                 }
 
                 close()
@@ -69,15 +88,29 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
 
             crc.update(bytes, 0, bytes.length)
 
-            if (crc.getValue != crcValue) throw CRCException()
+            if (crc.getValue != crcValue) {
+                crcErrors.labels(filename).inc()
+
+                throw CRCException()
+            }
         }
 
         val record = new LogRecord(bytes)
+
+        readBytes.labels(filename).inc(cis.getCount - position)
+        readRecords.labels(filename).inc()
+        size.observe(bytes.length)
 
         position = cis.getCount
 
         record
     }
 
-    override def close(): Unit = cis.close()
+    override def close(): Unit = {
+        logger.info(s"close log file $filename")
+
+        cis.close()
+
+        opening.dec()
+    }
 }

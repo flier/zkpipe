@@ -10,8 +10,6 @@ lazy val commonSettings = Seq(
 
 lazy val librarySettings = Seq(
     libraryDependencies ++= Seq(
-        // async
-        "org.scala-lang.modules" %% "scala-async" % "0.9.6",
         // logging
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.7",
         "org.apache.logging.log4j" % "log4j-api" % "2.7",
@@ -38,7 +36,11 @@ lazy val librarySettings = Seq(
         "com.google.protobuf" % "protobuf-java" % "3.1.0",
         // For finding google/protobuf/descriptor.proto
         "com.trueaccord.scalapb" %% "scalapb-runtime" % com.trueaccord.scalapb.compiler.Version.scalapbVersion % "protobuf",
-        "com.trueaccord.scalapb" %% "scalapb-json4s" % "0.1.5"
+        // For JSON binding
+        "com.trueaccord.scalapb" %% "scalapb-json4s" % "0.1.5",
+        // Prometheus metrics
+        "io.prometheus" % "simpleclient" % "0.0.19",
+        "io.prometheus" % "simpleclient_hotspot" % "0.0.19"
     ),
     transitiveClassifiers ++= Seq("sources")
 )
