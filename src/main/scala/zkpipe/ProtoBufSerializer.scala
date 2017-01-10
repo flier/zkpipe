@@ -3,7 +3,6 @@ package zkpipe
 import java.io.ByteArrayInputStream
 import java.util
 
-import ProtoBufConverters._
 import com.google.protobuf.ByteString
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.{Counter, Summary}
@@ -16,7 +15,11 @@ import zkpipe.TransactionOuterClass.{ACL, CheckVersion, Create, CreateContainer,
 import scala.collection.JavaConverters._
 import scala.language.postfixOps
 
-object ProtoBufConverters {
+object ProtoBufSerializer {
+    val SUBSYSTEM: String = "pb"
+    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded protobuf messages").register()
+    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded protobuf messages").register()
+
     implicit def toProtoBuf(implicit txn: CreateTxn): Transaction =
         Transaction.newBuilder()
             .setCreate(
@@ -145,12 +148,6 @@ object ProtoBufConverters {
 
         builder.build()
     }
-}
-
-object ProtoBufSerializer {
-    val SUBSYSTEM: String = "pb"
-    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded protobuf messages").register()
-    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded protobuf messages").register()
 }
 
 class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {

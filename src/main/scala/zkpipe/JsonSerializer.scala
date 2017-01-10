@@ -4,7 +4,6 @@ import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets.UTF_8
 import java.util
 
-import JsonConverters._
 import com.google.common.io.BaseEncoding
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.{Counter, Summary}
@@ -21,7 +20,11 @@ import scala.collection.JavaConverters._
 import scala.language.postfixOps
 import scala.util.Try
 
-object JsonConverters {
+object JsonSerializer {
+    val SUBSYSTEM: String = "json"
+    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded JSON messages").register()
+    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
+
     implicit def toJson(implicit txn: CreateTxn): JValue =
         "create" ->
             ("path" -> txn.getPath) ~
@@ -94,12 +97,6 @@ object JsonConverters {
 
         "multi" -> records
     }
-}
-
-object JsonSerializer {
-    val SUBSYSTEM: String = "json"
-    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded JSON messages").register()
-    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
 }
 
 class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, Any]())
