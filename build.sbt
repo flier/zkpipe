@@ -45,9 +45,14 @@ lazy val librarySettings = Seq(
     transitiveClassifiers ++= Seq("sources")
 )
 
+lazy val assemblySettings = Seq(
+    mainClass in (Compile, assembly) := Some("zkpipe.LogPipe")
+)
+
 lazy val root = (project in file("."))
     .settings(commonSettings: _*)
     .settings(librarySettings: _*)
+    .settings(assemblySettings: _*)
 
 PB.targets in Compile := Seq(
     PB.gens.java -> (sourceManaged in Compile).value,
