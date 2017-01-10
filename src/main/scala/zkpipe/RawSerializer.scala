@@ -19,6 +19,7 @@ class RawSerializer extends Serializer[LogRecord] with LazyLogging {
 
     override def serialize(topic: String, data: LogRecord): Array[Byte] = {
         records.inc()
+        size.observe(data.bytes.length)
 
         data.bytes
     }
