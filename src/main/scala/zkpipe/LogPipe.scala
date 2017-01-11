@@ -1,16 +1,18 @@
 package zkpipe
 
-import java.io.File
+import java.io.{File, PrintWriter, StringWriter}
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
 import scopt.{OptionParser, Read}
 import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.file.Files
 
 import org.apache.kafka.common.serialization.Serializer
 
+import scala.collection.JavaConverters._
 import scala.concurrent.Future
-import scala.util.Try
+import scala.language.postfixOps
 
 object MessageFormats extends Enumeration {
     type MessageFormat = Value
@@ -28,21 +30,14 @@ case class Config(logFiles: Seq[File] = Seq(),
                   kafkaUri: Uri = null,
                   msgFormat: MessageFormat = pb) extends LazyLogging
 {
-    lazy val files: Seq[File] = (logFiles ++ logDir) flatMap { file =>
+    lazy val files: Seq[File] = logFiles flatMap { file =>
         if (file.isDirectory)
             file.listFiles
         else if (file.isFile)
             Seq(file)
-        else {
-            if (!file.exists()) {
-                logger.warn(s"skip path `$file` doesn't exists")
-            } else {
-                logger.warn(s"skip unknown type of file `$file`")
-            }
-
-            Seq()
-        }
-    }
+        else
+            Files.newDirectoryStream(file.getParentFile.toPath, file.getName).asScala map { _.toFile }
+    } sorted
 }
 
 object Config {
@@ -97,7 +92,6 @@ object Config {
                 .unbounded()
                 .optional()
                 .action( (x, c) => c.copy(logFiles = c.logFiles :+ x) )
-                .validate(c => if (c.isFile && c.canRead) success else failure("Option `file` should be a readable file"))
                 .text("sync Zookeeper log files")
         }
 
@@ -121,7 +115,7 @@ object LogPipe extends LazyLogging {
         {
             val changedFiles = config.logDir match {
                 case Some(dir) => new LogWatcher(dir, checkCrc=config.checkCrc).changedFiles
-                case _ => config.logFiles.sorted map { file => new LogFile(file) }
+                case _ => config.files map { new LogFile(_) }
             }
 
             val valueSerializer = config.msgFormat match {
@@ -155,8 +149,14 @@ object LogPipe extends LazyLogging {
                 }
             }
         } catch {
-            case err: Throwable =>
+            case err: Throwable => {
                 logger.error(s"crashed, $err")
+                logger.debug({
+                    val sw = new StringWriter
+                    err.printStackTrace(new PrintWriter(sw))
+                    sw.toString
+                })
+            }
         }
     }
 }
