@@ -1,12 +1,12 @@
 package zkpipe
 
 import java.io.{File, PrintWriter, StringWriter}
+import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.file.Files
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
 import scopt.{OptionParser, Read}
-import java.nio.charset.StandardCharsets.UTF_8
-import java.nio.file.Files
 
 import org.apache.kafka.common.serialization.Serializer
 
@@ -38,6 +38,12 @@ case class Config(logFiles: Seq[File] = Seq(),
         else
             Files.newDirectoryStream(file.getParentFile.toPath, file.getName).asScala map { _.toFile }
     } sorted
+
+    lazy val valueSerializer: Serializer[LogRecord] with LazyLogging = msgFormat match {
+        case `pb` => new ProtoBufSerializer
+        case `json` => new JsonSerializer
+        case `raw` => new RawSerializer
+    }
 }
 
 object Config {
@@ -59,21 +65,21 @@ object Config {
                 .valueName("<path>")
                 .action((x, c) => c.copy(logDir = Some(x)))
                 .validate(c => if (c.isDirectory) success else failure("Option `log-dir` should be a directory"))
-                .text("Zookeeper log directory")
+                .text("Zookeeper log directory to monitor changes")
 
             opt[Range]('r', "range")
-                .valueName("<zxid>")
+                .valueName("<zxid:zxid>")
                 .action((x, c) => c.copy(zxidRange = x))
-                .text("sync ZooKeeper transactions with id in the range")
+                .text("sync ZooKeeper transactions with id in the range (default `:`)")
 
             opt[String]('p', "prefix")
                 .valueName("<path>")
                 .action((x, c) => c.copy(pathPrefix = x))
-                .text("sync Zookeeper transactions with path prefix")
+                .text("sync Zookeeper transactions with path prefix (default: `/`)")
 
             opt[Boolean]("check-crc")
                 .action((x, c) => c.copy(checkCrc = x))
-                .text("check record data CRC correct")
+                .text("check record data CRC correct (default: true)")
 
             opt[Uri]('k', "kafka")
                 .valueName("<uri>")
@@ -81,7 +87,7 @@ object Config {
                 .validate(c => if (c.scheme.contains("kafka")) success else failure("Option `kafka` scheme should be `kafka://`"))
                 .text("sync records to Kafka")
 
-            opt[MessageFormat]('f', "msg-format")
+            opt[MessageFormat]('f', "format")
                 .valueName("<format>")
                 .action((x, c) => c.copy(msgFormat = x))
                 .text("serialize message in [pb, json, raw] format (default: pb)")
@@ -100,13 +106,15 @@ object Config {
 }
 
 class LogConsole(valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging {
-    case class ConsoleMetadata(log: LogRecord) extends LogMetadata
+    case class Result(record: LogRecord) extends SendResult
 
-    override def send(log: LogRecord): Future[LogMetadata] = {
-        println(new String(valueSerializer.serialize("console", log), UTF_8))
+    override def send(record: LogRecord): Future[SendResult] = {
+        println(new String(valueSerializer.serialize("console", record), UTF_8))
 
-        Future successful ConsoleMetadata(log)
+        Future successful Result(record)
     }
+
+    override def close(): Unit = {}
 }
 
 object LogPipe extends LazyLogging {
@@ -118,16 +126,10 @@ object LogPipe extends LazyLogging {
                 case _ => config.files map { new LogFile(_) }
             }
 
-            val valueSerializer = config.msgFormat match {
-                case `pb` => new ProtoBufSerializer
-                case `json` => new JsonSerializer
-                case `raw` => new RawSerializer
-            }
-
             val broker = if (config.kafkaUri != null) {
-                new LogBroker(config.kafkaUri, valueSerializer)
+                new LogBroker(config.kafkaUri, config.valueSerializer)
             } else {
-                new LogConsole(valueSerializer)
+                new LogConsole(config.valueSerializer)
             }
 
             run(changedFiles,
@@ -139,24 +141,25 @@ object LogPipe extends LazyLogging {
 
     def run(changedFiles: Traversable[LogFile], broker: Broker, zxidRange: Range, pathPrefix: String): Unit = {
         try {
-            changedFiles foreach { log =>
-                logger.info(s"sync log file ${log.filename} ...")
+            changedFiles filter {
+                _.firstZxid.exists(zxidRange contains _.toInt)
+            } foreach { logFile =>
+                logger.info(s"sync log file ${logFile.filename} ...")
 
-                log.records filter { r =>
+                logFile.records filter { r =>
                     (zxidRange contains r.zxid) && r.path.forall(_.startsWith(pathPrefix))
                 } foreach { r =>
                     broker.send(r)
                 }
             }
         } catch {
-            case err: Throwable => {
+            case err: Throwable =>
                 logger.error(s"crashed, $err")
                 logger.debug({
                     val sw = new StringWriter
                     err.printStackTrace(new PrintWriter(sw))
                     sw.toString
                 })
-            }
         }
     }
 }

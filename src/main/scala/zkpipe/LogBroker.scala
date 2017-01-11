@@ -1,5 +1,7 @@
 package zkpipe
 
+import java.io.Closeable
+import java.lang.Long
 import java.util.Properties
 
 import com.netaporter.uri.Uri
@@ -10,12 +12,14 @@ import org.apache.kafka.common.serialization.{LongSerializer, Serializer}
 
 import scala.concurrent.{Future, Promise}
 
-trait LogMetadata {}
+trait SendResult {
+    val record: LogRecord
+}
 
-case class KafkaMetadata(metadata: RecordMetadata) extends LogMetadata
+case class KafkaResult(record: LogRecord, metadata: RecordMetadata) extends SendResult
 
-trait Broker {
-    def send(log: LogRecord): Future[LogMetadata]
+trait Broker extends Closeable {
+    def send(log: LogRecord): Future[SendResult]
 }
 
 object LogBroker {
@@ -46,10 +50,23 @@ class LogBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Broker
 
     lazy val topic: String = uri.path
 
-    lazy val producer = new KafkaProducer(props, new LongSerializer(), valueSerializer)
+    private var producerInitialized = false
 
-    override def send(log: LogRecord): Future[LogMetadata] = {
-        val promise = Promise[LogMetadata]()
+    lazy val producer: KafkaProducer[Long, LogRecord] = {
+        producerInitialized = true
+
+        new KafkaProducer(props, new LongSerializer(), valueSerializer)
+    }
+
+    override def close(): Unit = {
+        if (producerInitialized) {
+            producer.flush()
+            producer.close()
+        }
+    }
+
+    override def send(log: LogRecord): Future[SendResult] = {
+        val promise = Promise[SendResult]()
 
         sending.labels(topic).inc()
 
@@ -64,7 +81,7 @@ class LogBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Broker
                 if (exception == null) {
                     sent.labels(topic).inc()
 
-                    promise success KafkaMetadata(metadata)
+                    promise success KafkaResult(log, metadata)
                 } else {
                     error.labels(topic).inc()
 
