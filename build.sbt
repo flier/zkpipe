@@ -4,8 +4,7 @@ lazy val commonSettings = Seq(
     name := "zkpipe",
     organization := "com.nexusguard",
     version := "0.1.0",
-    scalaVersion := "2.12.1",
-    javacOptions ++= Seq("-source", "1.7", "-target", "1.7")
+    scalaVersion := "2.12.1"
 )
 
 lazy val librarySettings = Seq(
