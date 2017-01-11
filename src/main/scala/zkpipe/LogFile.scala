@@ -5,9 +5,11 @@ import java.util.zip.Adler32
 
 import com.google.common.io.CountingInputStream
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.{Counter, Gauge, Summary}
+import io.prometheus.client.{Counter, Gauge, Histogram, Summary}
 import org.apache.jute.BinaryInputArchive
 import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
+import com.github.nscala_time.time.StaticDateTime.now
+import com.github.nscala_time.time.Imports._
 
 import scala.util.{Failure, Success, Try}
 
@@ -24,6 +26,7 @@ object LogFile {
     val readBytes: Counter = Counter.build().subsystem(SUBSYSTEM).name("read_bytes").labelNames("filename").help("read bytes").register()
     val readRecords: Counter = Counter.build().subsystem(SUBSYSTEM).name("read_records").labelNames("filename").help("read records").register()
     val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("record size").register()
+    val delay: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("delay").help("sync delay").register()
 }
 
 class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extends Closeable with LazyLogging {
@@ -100,6 +103,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
         readBytes.labels(filename).inc(cis.getCount - position)
         readRecords.labels(filename).inc()
         size.observe(bytes.length)
+        delay.observe((record.time to now).millis)
 
         position = cis.getCount
 
