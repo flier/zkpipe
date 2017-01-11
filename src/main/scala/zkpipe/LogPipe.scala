@@ -141,15 +141,19 @@ object LogPipe extends LazyLogging {
 
     def run(changedFiles: Traversable[LogFile], broker: Broker, zxidRange: Range, pathPrefix: String): Unit = {
         try {
-            changedFiles filter {
-                _.firstZxid.exists(zxidRange contains _.toInt)
-            } foreach { logFile =>
-                logger.info(s"sync log file ${logFile.filename} ...")
+            changedFiles foreach { logFile =>
+                if (logFile.firstZxid.exists(_ < zxidRange.end)) {
+                    logger.info(s"sync log file ${logFile.filename} ...")
 
-                logFile.records filter { r =>
-                    (zxidRange contains r.zxid) && r.path.forall(_.startsWith(pathPrefix))
-                } foreach { r =>
-                    broker.send(r)
+                    logFile.records filter { r =>
+                        (zxidRange contains r.zxid.toInt) && r.path.forall(_.startsWith(pathPrefix))
+                    } foreach { r =>
+                        broker.send(r)
+                    }
+                } else {
+                    logger.info(s"skip log file ${logFile.filename} not in $zxidRange")
+
+                    logFile.close()
                 }
             }
         } catch {
