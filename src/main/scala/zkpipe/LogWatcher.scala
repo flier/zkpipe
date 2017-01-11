@@ -30,7 +30,7 @@ class LogWatcher(dir: File, checkCrc: Boolean) extends Closeable with LazyLoggin
 
     val watchKeys: Map[WatchKey, Path] = Map(dir.toPath.register(watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY) -> dir.toPath)
 
-    logger.info(s"watching directory ${dir} ...")
+    logger.info(s"watching directory $dir ...")
 
     override def close(): Unit = {
         watcher.close()

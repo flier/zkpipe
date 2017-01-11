@@ -179,7 +179,7 @@ class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
                 .setType(Transaction.Type.forNumber(log.opcode.id))
         )
 
-        record foreach { builder.setRecord(_) }
+        record foreach { builder.setRecord }
 
         records.labels(log.opcode.toString).inc()
 

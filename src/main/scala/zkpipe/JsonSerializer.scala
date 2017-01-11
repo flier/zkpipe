@@ -133,7 +133,7 @@ class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, A
                 ("time" -> log.time.getMillis) ~
                 ("path" -> log.path) ~
                 ("type" -> log.opcode.toString) ~
-                ("record" -> record.getOrElse(null))
+                ("record" -> record.orNull)
         )
 
         records.labels(log.opcode.toString).inc()
