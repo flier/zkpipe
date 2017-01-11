@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import org.apache.kafka.common.serialization.Serializer
 
 import scala.concurrent.Future
+import scala.util.Try
 
 object MessageFormats extends Enumeration {
     type MessageFormat = Value
@@ -143,32 +144,20 @@ object LogPipe extends LazyLogging {
     }
 
     def run(changedFiles: Traversable[LogFile], broker: Broker, zxidRange: Range, pathPrefix: String): Unit = {
-        lazy val t = new Thread(() => {
-            try {
-                changedFiles foreach { log =>
-                    logger.info(s"sync log file ${log.filename} ...")
+        try {
+            changedFiles foreach { log =>
+                logger.info(s"sync log file ${log.filename} ...")
 
-                    log.records filter { r =>
-                        (zxidRange contains r.zxid) && r.path.forall(_.startsWith(pathPrefix))
-                    } foreach { r =>
-                        broker.send(r)
-                    }
+                log.records filter { r =>
+                    (zxidRange contains r.zxid) && r.path.forall(_.startsWith(pathPrefix))
+                } foreach { r =>
+                    broker.send(r)
                 }
-            } catch {
-                case _: InterruptedException =>
-                    Thread.currentThread.interrupt()
-
-                case err: Throwable =>
-                    logger.error(s"crashed, $err")
             }
-        })
-
-        sys.addShutdownHook({
-            t.interrupt()
-            t.join()
-        })
-
-        t.start()
+        } catch {
+            case err: Throwable =>
+                logger.error(s"crashed, $err")
+        }
     }
 }
 
