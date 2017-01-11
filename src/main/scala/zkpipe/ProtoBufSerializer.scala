@@ -156,19 +156,20 @@ class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
-        val txn: Transaction = log.record match {
-            case r: CreateTxn  => records.labels("create").inc(); toProtoBuf(r)
-            case r: CreateContainerTxn  => records.labels("createContainer").inc(); toProtoBuf(r)
-            case r: DeleteTxn  => records.labels("delete").inc(); toProtoBuf(r)
-            case r: SetDataTxn  => records.labels("setData").inc(); toProtoBuf(r)
-            case r: CheckVersionTxn  => records.labels("checkVersion").inc(); toProtoBuf(r)
-            case r: SetACLTxn  => records.labels("setACL").inc(); toProtoBuf(r)
-            case r: CreateSessionTxn => records.labels("createSession").inc(); toProtoBuf(r)
-            case r: ErrorTxn => records.labels("error").inc(); toProtoBuf(r)
-            case r: MultiTxn => records.labels("multi").inc(); toProtoBuf(r)
+        val record: Option[Transaction] = log.record match {
+            case r: CreateTxn  => Some(toProtoBuf(r))
+            case r: CreateContainerTxn  => Some(toProtoBuf(r))
+            case r: DeleteTxn  => Some(toProtoBuf(r))
+            case r: SetDataTxn  => Some(toProtoBuf(r))
+            case r: CheckVersionTxn  => Some(toProtoBuf(r))
+            case r: SetACLTxn  => Some(toProtoBuf(r))
+            case r: CreateSessionTxn => Some(toProtoBuf(r))
+            case r: ErrorTxn => Some(toProtoBuf(r))
+            case r: MultiTxn => Some(toProtoBuf(r))
+            case _ => None
         }
 
-        val msg: Message = Message.newBuilder().setHeader(
+        val builder = Message.newBuilder().setHeader(
             Header.newBuilder()
                 .setSession(log.session)
                 .setCxid(log.cxid)
@@ -176,9 +177,13 @@ class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
                 .setTime(log.time.getMillis)
                 .setPath(log.path.getOrElse(""))
                 .setType(Transaction.Type.forNumber(log.opcode.id))
-        ).setRecord(txn).build()
+        )
 
-        val bytes = msg.toByteArray
+        record foreach { builder.setRecord(_) }
+
+        records.labels(log.opcode.toString).inc()
+
+        val bytes = builder.build().toByteArray
 
         size.observe(bytes.length)
 

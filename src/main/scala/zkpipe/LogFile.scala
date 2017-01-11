@@ -40,7 +40,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
     private val cis = new CountingInputStream(new FileInputStream(file))
     private val stream = BinaryInputArchive.getArchive(cis)
 
-    lazy val filename: String = file.getName
+    lazy val filename: String = file.getAbsolutePath
 
     val header = new FileHeader()
 

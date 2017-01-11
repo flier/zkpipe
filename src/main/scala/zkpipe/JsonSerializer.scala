@@ -113,16 +113,17 @@ class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, A
     }
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
-        val record: JValue = log.record match {
-            case r: CreateTxn => records.labels("create").inc(); toJson(r)
-            case r: CreateContainerTxn => records.labels("createContainer").inc(); toJson(r)
-            case r: DeleteTxn => records.labels("delete").inc(); toJson(r)
-            case r: SetDataTxn => records.labels("setData").inc(); toJson(r)
-            case r: CheckVersionTxn => records.labels("checkVersion").inc(); toJson(r)
-            case r: SetACLTxn => records.labels("setACL").inc(); toJson(r)
-            case r: CreateSessionTxn => records.labels("createSession").inc(); toJson(r)
-            case r: ErrorTxn => records.labels("error").inc(); toJson(r)
-            case r: MultiTxn => records.labels("multi").inc(); toJson(r)
+        val record: Option[JValue] = log.record match {
+            case r: CreateTxn => Some(toJson(r))
+            case r: CreateContainerTxn => Some(toJson(r))
+            case r: DeleteTxn => Some(toJson(r))
+            case r: SetDataTxn => Some(toJson(r))
+            case r: CheckVersionTxn => Some(toJson(r))
+            case r: SetACLTxn => Some(toJson(r))
+            case r: CreateSessionTxn => Some(toJson(r))
+            case r: ErrorTxn => Some(toJson(r))
+            case r: MultiTxn => Some(toJson(r))
+            case _ => None
         }
 
         val json: JValue = render(
@@ -132,8 +133,10 @@ class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, A
                 ("time" -> log.time.getMillis) ~
                 ("path" -> log.path) ~
                 ("type" -> log.opcode.toString) ~
-                ("record" -> record)
+                ("record" -> record.getOrElse(null))
         )
+
+        records.labels(log.opcode.toString).inc()
 
         val bytes = (if (printPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
 

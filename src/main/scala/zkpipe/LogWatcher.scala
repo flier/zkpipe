@@ -5,7 +5,7 @@ import java.nio.file.StandardWatchEventKinds.{ENTRY_CREATE, ENTRY_DELETE, ENTRY_
 import java.nio.file.{FileSystems, Path, WatchKey, WatchService}
 
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.{Counter}
+import io.prometheus.client.Counter
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
