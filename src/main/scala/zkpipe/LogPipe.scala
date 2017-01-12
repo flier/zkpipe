@@ -1,14 +1,18 @@
 package zkpipe
 
 import java.io.{File, PrintWriter, StringWriter}
+import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
+import io.prometheus.client.exporter.MetricsServlet
+import io.prometheus.client.hotspot.DefaultExports
 import scopt.{OptionParser, Read}
-
 import org.apache.kafka.common.serialization.Serializer
+import org.eclipse.jetty.server.Server
+import org.eclipse.jetty.servlet.{ServletContextHandler, ServletHolder}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
@@ -25,9 +29,12 @@ import MessageFormats._
 case class Config(logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Range = 0 until Int.MaxValue,
+                  fromLatest: Boolean = false,
                   pathPrefix: String = "/",
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
+                  metricUri: Uri = null,
+                  jvmMetrics: Boolean = false,
                   msgFormat: MessageFormat = pb) extends LazyLogging
 {
     lazy val files: Seq[File] = logFiles flatMap { file =>
@@ -55,6 +62,7 @@ object Config {
                 case Array(low) => low.toInt until Int.MaxValue
                 case Array("", upper) => 0 until upper.toInt
                 case Array(low, upper) => low.toInt until upper.toInt
+                case Array() => Int.MinValue until Int.MaxValue
             }
         )
 
@@ -70,7 +78,11 @@ object Config {
             opt[Range]('r', "range")
                 .valueName("<zxid:zxid>")
                 .action((x, c) => c.copy(zxidRange = x))
-                .text("sync ZooKeeper transactions with id in the range (default `:`)")
+                .text("sync Zookeeper transactions with id in the range (default `:`)")
+
+            opt[Unit]("from-latest")
+                .action((x, c) => c.copy(fromLatest = true))
+                .text("sync Zookeeper from latest transaction")
 
             opt[String]('p', "prefix")
                 .valueName("<path>")
@@ -86,6 +98,16 @@ object Config {
                 .action((x, c) => c.copy(kafkaUri = x))
                 .validate(c => if (c.scheme.contains("kafka")) success else failure("Option `kafka` scheme should be `kafka://`"))
                 .text("sync records to Kafka")
+
+            opt[Uri]('m', "metrics")
+                .valueName("<uri>")
+                .action((x, c) => c.copy(metricUri = x))
+                .validate(c => if (c.scheme.contains("http")) success else failure("Option `metrics` scheme should be `http://`"))
+                .text("serve metrics for prometheus")
+
+            opt[Boolean]("jvm-metrics")
+                .action((x, c) => c.copy(jvmMetrics = x))
+                .text("provides JVM hotspot metrics (default: false)")
 
             opt[MessageFormat]('f', "format")
                 .valueName("<format>")
@@ -121,9 +143,13 @@ object LogPipe extends LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
+            exportMetrics(config.metricUri, config.jvmMetrics)
+
             val changedFiles = config.logDir match {
-                case Some(dir) => new LogWatcher(dir, checkCrc=config.checkCrc).changedFiles
-                case _ => config.files map { new LogFile(_) }
+                case Some(dir) =>
+                    new LogWatcher(dir, checkCrc = config.checkCrc, fromLatest = config.fromLatest).changedFiles
+                case _ =>
+                    config.files map { new LogFile(_) }
             }
 
             val broker = if (config.kafkaUri != null) {
@@ -136,6 +162,28 @@ object LogPipe extends LazyLogging {
                 broker,
                 zxidRange = config.zxidRange,
                 pathPrefix = config.pathPrefix)
+        }
+    }
+
+    def exportMetrics(uri: Uri, jvmMetrics: Boolean): Unit = {
+        if (uri != null) {
+            if (jvmMetrics) DefaultExports.initialize()
+
+            for (
+                host <- uri.host;
+                port <- uri.port
+            ) {
+                val server: Server = new Server(new InetSocketAddress(host, port))
+                val context: ServletContextHandler = new ServletContextHandler
+
+                context.setContextPath("/")
+                context.addServlet(new ServletHolder(new MetricsServlet()), uri.path)
+
+                server.setHandler(context)
+                server.start()
+
+                logger.info(s"serve metrics @ ${server.getURI}")
+            }
         }
     }
 

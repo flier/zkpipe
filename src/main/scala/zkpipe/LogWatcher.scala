@@ -17,7 +17,7 @@ object LogWatcher {
     val fileChanges: Counter = Counter.build().subsystem(SUBSYSTEM).name("changes").labelNames("dir", "kind").help("watched file changes").register()
 }
 
-class LogWatcher(dir: File, checkCrc: Boolean) extends Closeable with LazyLogging{
+class LogWatcher(dir: File, checkCrc: Boolean, fromLatest: Boolean) extends Closeable with LazyLogging{
     import LogWatcher._
 
     require(dir.isDirectory, "can only watch directory")
@@ -57,10 +57,18 @@ class LogWatcher(dir: File, checkCrc: Boolean) extends Closeable with LazyLoggin
     }
 
     val changedFiles: Stream[LogFile] = {
-        var iter = watchFiles.values.toSeq.sortBy(_.filename).iterator
+        var iter = if (fromLatest) {
+            watchFiles.values foreach { logFile =>
+                logger.info(s"skip to end @ ${logFile.records.last.zxid}")
+            }
+
+            poll().iterator
+        } else {
+            watchFiles.values.toSeq.sortBy(_.filename).iterator
+        }
 
         def next(): LogFile = {
-            if (!iter.hasNext) {
+            while (!iter.hasNext) {
                 iter = poll().iterator
             }
 

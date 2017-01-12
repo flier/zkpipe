@@ -40,7 +40,9 @@ lazy val librarySettings = Seq(
         "com.trueaccord.scalapb" %% "scalapb-json4s" % "0.1.5",
         // Prometheus metrics
         "io.prometheus" % "simpleclient" % "0.0.19",
-        "io.prometheus" % "simpleclient_hotspot" % "0.0.19"
+        "io.prometheus" % "simpleclient_hotspot" % "0.0.19",
+        "io.prometheus" % "simpleclient_servlet" % "0.0.19",
+        "org.eclipse.jetty" % "jetty-servlet" % "9.4.0.v20161208"
     ),
     transitiveClassifiers ++= Seq("sources")
 )
