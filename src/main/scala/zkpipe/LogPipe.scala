@@ -1,22 +1,20 @@
 package zkpipe
 
-import java.io.{File, PrintWriter, StringWriter}
+import java.io.{Closeable, File, PrintWriter, StringWriter}
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.exporter.MetricsServlet
 import io.prometheus.client.hotspot.DefaultExports
 import scopt.{OptionParser, Read}
 import org.apache.kafka.common.serialization.Serializer
-import org.eclipse.jetty.server.Server
-import org.eclipse.jetty.servlet.{ServletContextHandler, ServletHolder}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
-import scala.language.postfixOps
+import scala.language.{implicitConversions, postfixOps}
+import scala.concurrent.duration._
 
 object MessageFormats extends Enumeration {
     type MessageFormat = Value
@@ -33,9 +31,11 @@ case class Config(logFiles: Seq[File] = Seq(),
                   pathPrefix: String = "/",
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
-                  metricUri: Uri = null,
+                  metricServerUri: Option[Uri] = None,
+                  pushGatewayAddr: Option[InetSocketAddress] = None,
+                  pushInterval: Duration = 15 second,
                   jvmMetrics: Boolean = false,
-                  msgFormat: MessageFormat = pb) extends LazyLogging
+                  msgFormat: MessageFormat = json) extends LazyLogging
 {
     lazy val files: Seq[File] = logFiles flatMap { file =>
         if (file.isDirectory)
@@ -65,6 +65,13 @@ object Config {
                 case Array() => Int.MinValue until Int.MaxValue
             }
         )
+        implicit val addrRead: Read[InetSocketAddress] = Read.reads( addr =>
+            addr.split(':') match {
+                case Array(host, port) => new InetSocketAddress(host, port.toInt)
+                case Array(host) => new InetSocketAddress(host, 9091)
+                case _ => throw new IllegalArgumentException(s"`$addr` is not a valid address")
+            }
+        )
 
         val parser = new OptionParser[Config]("zkpipe") {
             head("zkpipe", "0.1")
@@ -81,7 +88,7 @@ object Config {
                 .text("sync Zookeeper transactions with id in the range (default `:`)")
 
             opt[Unit]("from-latest")
-                .action((x, c) => c.copy(fromLatest = true))
+                .action((_, c) => c.copy(fromLatest = true))
                 .text("sync Zookeeper from latest transaction")
 
             opt[String]('p', "prefix")
@@ -99,11 +106,20 @@ object Config {
                 .validate(c => if (c.scheme.contains("kafka")) success else failure("Option `kafka` scheme should be `kafka://`"))
                 .text("sync records to Kafka")
 
-            opt[Uri]('m', "metrics")
+            opt[Uri]('m', "metrics-uri")
                 .valueName("<uri>")
-                .action((x, c) => c.copy(metricUri = x))
+                .action((x, c) => c.copy(metricServerUri = Some(x)))
                 .validate(c => if (c.scheme.contains("http")) success else failure("Option `metrics` scheme should be `http://`"))
                 .text("serve metrics for prometheus")
+
+            opt[InetSocketAddress]("push-gateway")
+                .valueName("<addr>")
+                .action((x, c) => c.copy(pushGatewayAddr = Some(x)))
+                .text("push metrics to the prometheus push gateway")
+
+            opt[Duration]("push-interval")
+                .action((x, c) => c.copy(pushInterval = x))
+                .text("schedule to push metrics (default: 15 seconds)")
 
             opt[Boolean]("jvm-metrics")
                 .action((x, c) => c.copy(jvmMetrics = x))
@@ -112,7 +128,7 @@ object Config {
             opt[MessageFormat]('f', "format")
                 .valueName("<format>")
                 .action((x, c) => c.copy(msgFormat = x))
-                .text("serialize message in [pb, json, raw] format (default: pb)")
+                .text("serialize message in [pb, json, raw] format (default: json)")
 
             help("help").abbr("h").text("show usage screen")
 
@@ -143,46 +159,43 @@ object LogPipe extends LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
-            exportMetrics(config.metricUri, config.jvmMetrics)
+            if (config.jvmMetrics) DefaultExports.initialize()
 
-            val changedFiles = config.logDir match {
-                case Some(dir) =>
-                    new LogWatcher(dir, checkCrc = config.checkCrc, fromLatest = config.fromLatest).changedFiles
-                case _ =>
-                    config.files map { new LogFile(_) }
-            }
+            val metricServer = config.metricServerUri.map(MetricServer)
+            val metricPusher = config.pushGatewayAddr.map({ MetricPusher(_, config.pushInterval) })
 
-            val broker = if (config.kafkaUri != null) {
-                new LogBroker(config.kafkaUri, config.valueSerializer)
-            } else {
-                new LogConsole(config.valueSerializer)
-            }
+            var services: Seq[Closeable] = Seq() ++ metricServer ++ metricPusher
 
-            run(changedFiles,
-                broker,
-                zxidRange = config.zxidRange,
-                pathPrefix = config.pathPrefix)
-        }
-    }
+            try {
+                val changedFiles = config.logDir match {
+                    case Some(dir) =>
+                        val watcher = new LogWatcher(dir, checkCrc = config.checkCrc, fromLatest = config.fromLatest)
 
-    def exportMetrics(uri: Uri, jvmMetrics: Boolean): Unit = {
-        if (uri != null) {
-            if (jvmMetrics) DefaultExports.initialize()
+                        services = services :+ watcher
 
-            for (
-                host <- uri.host;
-                port <- uri.port
-            ) {
-                val server: Server = new Server(new InetSocketAddress(host, port))
-                val context: ServletContextHandler = new ServletContextHandler
+                        watcher.changedFiles
+                    case _ =>
+                        config.files map {
+                            new LogFile(_)
+                        }
+                }
 
-                context.setContextPath("/")
-                context.addServlet(new ServletHolder(new MetricsServlet()), uri.path)
+                val broker = if (config.kafkaUri != null) {
+                    new LogBroker(config.kafkaUri, config.valueSerializer)
+                } else {
+                    new LogConsole(config.valueSerializer)
+                }
 
-                server.setHandler(context)
-                server.start()
+                services = services :+ broker
 
-                logger.info(s"serve metrics @ ${server.getURI}")
+                run(changedFiles,
+                    broker,
+                    zxidRange = config.zxidRange,
+                    pathPrefix = config.pathPrefix)
+            } finally {
+                logger.info("closing services")
+
+                services.reverse.foreach(_.close())
             }
         }
     }

@@ -17,6 +17,11 @@ lazy val librarySettings = Seq(
         "com.fasterxml.jackson.core" % "jackson-databind" % "2.8.5",
         "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % "2.8.5",
         "com.typesafe.scala-logging" %% "scala-logging" % "3.5.0",
+        // scala async
+        "org.scala-lang.modules" %% "scala-async" % "0.9.6",
+        // scalaz extentions
+        "org.scalaz" %% "scalaz-core" % "7.2.8",
+        "org.scalaz" %% "scalaz-concurrent" % "7.2.8",
         // common
         "com.google.guava" % "guava" % "20.0",
         // command line options
@@ -42,6 +47,7 @@ lazy val librarySettings = Seq(
         "io.prometheus" % "simpleclient" % "0.0.19",
         "io.prometheus" % "simpleclient_hotspot" % "0.0.19",
         "io.prometheus" % "simpleclient_servlet" % "0.0.19",
+        "io.prometheus" % "simpleclient_pushgateway" % "0.0.19",
         "org.eclipse.jetty" % "jetty-servlet" % "9.4.0.v20161208"
     ),
     transitiveClassifiers ++= Seq("sources")
