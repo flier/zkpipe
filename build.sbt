@@ -48,7 +48,14 @@ lazy val librarySettings = Seq(
         "io.prometheus" % "simpleclient_hotspot" % "0.0.19",
         "io.prometheus" % "simpleclient_servlet" % "0.0.19",
         "io.prometheus" % "simpleclient_pushgateway" % "0.0.19",
-        "org.eclipse.jetty" % "jetty-servlet" % "9.4.0.v20161208"
+        "io.prometheus" % "simpleclient_dropwizard" % "0.0.19",
+        "org.eclipse.jetty" % "jetty-servlet" % "9.4.0.v20161208",
+        // DropWizard metrics with metrics-scala
+        "nl.grons" %% "metrics-scala" % "3.5.5",
+        "io.dropwizard.metrics" % "metrics-graphite" % "3.1.2",
+        "io.dropwizard.metrics" % "metrics-ganglia" % "3.1.2",
+        "io.dropwizard.metrics" % "metrics-jetty9" % "3.1.2",
+        "io.dropwizard.metrics" % "metrics-servlets" % "3.1.2"
     ),
     transitiveClassifiers ++= Seq("sources")
 )

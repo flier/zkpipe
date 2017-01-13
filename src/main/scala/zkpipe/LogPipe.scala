@@ -5,9 +5,12 @@ import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 
+import com.codahale.metrics.JmxReporter
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
+import io.prometheus.client.dropwizard.DropwizardExports
 import io.prometheus.client.hotspot.DefaultExports
+import nl.grons.metrics.scala.DefaultInstrumented
 import scopt.{OptionParser, Read}
 import org.apache.kafka.common.serialization.Serializer
 
@@ -33,9 +36,10 @@ case class Config(logFiles: Seq[File] = Seq(),
                   kafkaUri: Uri = null,
                   metricServerUri: Option[Uri] = None,
                   pushGatewayAddr: Option[InetSocketAddress] = None,
+                  reportUri: Option[Uri] = None,
                   pushInterval: Duration = 15 second,
                   jvmMetrics: Boolean = false,
-                  msgFormat: MessageFormat = json) extends LazyLogging
+                  msgFormat: MessageFormat = json) extends DefaultInstrumented with LazyLogging
 {
     lazy val files: Seq[File] = logFiles flatMap { file =>
         if (file.isDirectory)
@@ -50,6 +54,28 @@ case class Config(logFiles: Seq[File] = Seq(),
         case `pb` => new ProtoBufSerializer
         case `json` => new JsonSerializer
         case `raw` => new RawSerializer
+    }
+
+    def initializeMetrics(): Seq[Closeable] = {
+        // Registry JMV hotspot metrics to Prometheus collector
+        if (jvmMetrics) DefaultExports.initialize()
+
+        // Registry DropWizard metrics to Prometheus collector
+        new DropwizardExports(metricRegistry).register()
+
+        // Export DropWizard metrics as JMX MBean
+        JmxReporter.forRegistry(metricRegistry).build().start()
+
+        // Start HTTP server for Prometheus metrics
+        val metricServer = metricServerUri.map( new MetricServer(_))
+
+        // Start pusher task for Prometheus push gateway
+        val metricPusher = pushGatewayAddr.map({ new MetricPusher(_, pushInterval) })
+
+        // Report metrics to the Graphite or Ganglia server
+        val metricReporter = reportUri.map({ new MetricReporter(_, pushInterval) })
+
+        Seq() ++ metricServer ++ metricPusher ++ metricReporter
     }
 }
 
@@ -110,12 +136,17 @@ object Config {
                 .valueName("<uri>")
                 .action((x, c) => c.copy(metricServerUri = Some(x)))
                 .validate(c => if (c.scheme.contains("http")) success else failure("Option `metrics` scheme should be `http://`"))
-                .text("serve metrics for prometheus")
+                .text("serve metrics for Prometheus pull")
 
             opt[InetSocketAddress]("push-gateway")
                 .valueName("<addr>")
                 .action((x, c) => c.copy(pushGatewayAddr = Some(x)))
-                .text("push metrics to the prometheus push gateway")
+                .text("push metrics to the Prometheus push gateway")
+
+            opt[Uri]("report-uri")
+                .valueName("<uri>")
+                .action((x, c) => c.copy(reportUri = Some(x)))
+                .text("report metrics to the Graphite or Ganglia server")
 
             opt[Duration]("push-interval")
                 .action((x, c) => c.copy(pushInterval = x))
@@ -159,12 +190,7 @@ object LogPipe extends LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
-            if (config.jvmMetrics) DefaultExports.initialize()
-
-            val metricServer = config.metricServerUri.map(MetricServer)
-            val metricPusher = config.pushGatewayAddr.map({ MetricPusher(_, config.pushInterval) })
-
-            var services: Seq[Closeable] = Seq() ++ metricServer ++ metricPusher
+            var services: Seq[Closeable] = config.initializeMetrics()
 
             try {
                 val changedFiles = config.logDir match {
