@@ -1,6 +1,7 @@
 package zkpipe
 
 import java.io.{Closeable, EOFException, File, FileInputStream}
+import java.nio.file.Path
 import java.util.zip.Adler32
 
 import com.google.common.io.CountingInputStream
@@ -45,6 +46,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
     private var closed = false
 
     lazy val filename: String = file.getAbsolutePath
+    lazy val filepath: Path = file.getAbsoluteFile.toPath
 
     var firstZxid: Option[Long] = file.getName match {
         case LogFilename(zxid) => Some(zxid.toLong)
@@ -71,6 +73,14 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
     readBytes.labels(filename).inc(position)
 
     def isValid: Boolean = header.getMagic == FileTxnLog.TXNLOG_MAGIC
+
+    def skipToEnd: LogRecord = {
+        val last = records.last
+
+        logger.info(s"`$filename` skip to end @ ${last.zxid}")
+
+        last
+    }
 
     val records: Stream[LogRecord] = {
         def next(): Stream[LogRecord] = Try(readRecord()) match {

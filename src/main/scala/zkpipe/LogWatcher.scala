@@ -22,14 +22,14 @@ class LogWatcher(dir: File, checkCrc: Boolean, fromLatest: Boolean) extends Clos
 
     require(dir.isDirectory, "can only watch directory")
 
-    lazy val watchFiles: mutable.Map[Path, LogFile] = mutable.Map.empty ++
+    var watchFiles: mutable.Map[Path, LogFile] = mutable.Map.empty ++
         (dir.listFiles filter { _.isFile } filter { _.canRead } flatMap { file =>
             val filename = file.getAbsoluteFile.toPath
 
             Try (new LogFile(file)) match {
                 case Success(logFile) =>
                     if (logFile.isValid) {
-                        Some((filename, logFile))
+                        Some((logFile.filepath, logFile))
                     } else {
                         logger.info(s"skip invalid file $filename")
 
@@ -43,6 +43,22 @@ class LogWatcher(dir: File, checkCrc: Boolean, fromLatest: Boolean) extends Clos
                     None
             }
         })
+
+    if (fromLatest) {
+        val (latest, skipped) = watchFiles.values.toSeq.sortBy(_.firstZxid).reverse.splitAt(1)
+
+        latest foreach { logFile =>
+            logger.debug(s"log file `${logFile.filename}` skipped to end")
+
+            logFile.skipToEnd
+        }
+
+        skipped foreach { logFile =>
+            logger.debug(s"log file `${logFile.filename}` skipped and closed")
+
+            watchFiles.remove(logFile.filepath).foreach(_.close)
+        }
+    }
 
     val watcher: WatchService = FileSystems.getDefault.newWatchService()
 
@@ -58,10 +74,6 @@ class LogWatcher(dir: File, checkCrc: Boolean, fromLatest: Boolean) extends Clos
 
     val changedFiles: Stream[LogFile] = {
         var iter = if (fromLatest) {
-            watchFiles.values foreach { logFile =>
-                logger.info(s"skip to end @ ${logFile.records.last.zxid}")
-            }
-
             poll().iterator
         } else {
             watchFiles.values.toSeq.sortBy(_.filename).iterator
