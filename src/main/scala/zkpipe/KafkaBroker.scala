@@ -11,7 +11,6 @@ import io.prometheus.client.{Counter, Gauge, Histogram}
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.TopicPartition
-import org.apache.kafka.common.requests.ListOffsetRequest
 import org.apache.kafka.common.serialization._
 
 import scala.collection.JavaConverters._

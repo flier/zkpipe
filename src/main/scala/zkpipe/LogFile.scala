@@ -125,7 +125,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
             }
         }
 
-        val record = new LogRecord(bytes)
+        val record: LogRecord = new LogRecord(bytes)
 
         readBytes.labels(filename).inc(cis.getCount - position)
         readRecords.labels(filename).inc()

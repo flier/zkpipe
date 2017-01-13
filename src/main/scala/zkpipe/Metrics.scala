@@ -61,7 +61,7 @@ class MetricServer(uri: Uri, httpMetrics: Boolean) extends DefaultInstrumented w
 
     server.start()
 
-    healthCheck("alive") { server.isRunning() }
+    healthCheck("alive") { server.isRunning }
 
     override def close(): Unit = {
         logger.info("stop serve metrics")

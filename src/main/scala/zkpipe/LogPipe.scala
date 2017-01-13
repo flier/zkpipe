@@ -159,11 +159,11 @@ object Config {
                 .text("schedule to push metrics (default: 15 seconds)")
 
             opt[Unit]("jvm-metrics")
-                .action((x, c) => c.copy(jvmMetrics = true))
+                .action((_, c) => c.copy(jvmMetrics = true))
                 .text("export JVM hotspot metrics (default: false)")
 
             opt[Unit]("http-metrics")
-                .action((x, c) => c.copy(httpMetrics = true))
+                .action((_, c) => c.copy(httpMetrics = true))
                 .text("export HTTP metrics (default: false)")
 
             note("\n[Commands]\n")

@@ -58,7 +58,7 @@ class LogWatcher(dir: File,
         skipped foreach { logFile =>
             logger.debug(s"log file `${logFile.filename}` skipped and closed")
 
-            watchFiles.remove(logFile.filepath).foreach(_.close)
+            watchFiles.remove(logFile.filepath).foreach(_.close())
         }
     }
 
