@@ -27,7 +27,7 @@ import scala.util.{Failure, Success, Try}
 import scala.concurrent.duration.Duration
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class MetricServer(uri: Uri) extends DefaultInstrumented with LazyLogging with Closeable {
+class MetricServer(uri: Uri, httpMetrics: Boolean) extends DefaultInstrumented with LazyLogging with Closeable {
     val DEFAULT_HOST = "localhost"
     val DEFAULT_PORT = 9091
 
@@ -37,7 +37,6 @@ class MetricServer(uri: Uri) extends DefaultInstrumented with LazyLogging with C
 
     context.setContextPath("/")
     context.addServlet(new ServletHolder(new MetricsServlet()), uri.path)
-    context.addServlet(new ServletHolder(new AdminServlet()), "/dropwizard/*")
 
     context.addEventListener(new ContextListener {
         override def getMetricRegistry: MetricRegistry = metricRegistry
@@ -45,13 +44,18 @@ class MetricServer(uri: Uri) extends DefaultInstrumented with LazyLogging with C
     context.addEventListener(new HealthCheckServlet.ContextListener {
         override def getHealthCheckRegistry: HealthCheckRegistry = registry
     })
+    context.addServlet(new ServletHolder(new AdminServlet()), "/dropwizard/*")
 
-    val instrumented = new InstrumentedHandler(metricRegistry)
+    if (httpMetrics) {
+        val instrumented = new InstrumentedHandler(metricRegistry)
 
-    instrumented.setName("jetty")
-    instrumented.setHandler(context)
+        instrumented.setName("jetty")
+        instrumented.setHandler(context)
 
-    server.setHandler(instrumented)
+        server.setHandler(instrumented)
+    } else {
+        server.setHandler(context)
+    }
 
     logger.info(s"serve metrics @ $uri")
 

@@ -27,7 +27,8 @@ object MessageFormats extends Enumeration {
 
 import MessageFormats._
 
-case class Config(logFiles: Seq[File] = Seq(),
+case class Config(mode: String = null,
+                  logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Range = 0 until Int.MaxValue,
                   fromLatest: Boolean = false,
@@ -39,6 +40,7 @@ case class Config(logFiles: Seq[File] = Seq(),
                   reportUri: Option[Uri] = None,
                   pushInterval: Duration = 15 second,
                   jvmMetrics: Boolean = false,
+                  httpMetrics: Boolean = false,
                   msgFormat: MessageFormat = json) extends DefaultInstrumented with LazyLogging
 {
     lazy val files: Seq[File] = logFiles flatMap { file =>
@@ -67,7 +69,7 @@ case class Config(logFiles: Seq[File] = Seq(),
         JmxReporter.forRegistry(metricRegistry).build().start()
 
         // Start HTTP server for Prometheus metrics
-        val metricServer = metricServerUri.map( new MetricServer(_))
+        val metricServer = metricServerUri.map({ new MetricServer(_, httpMetrics) })
 
         // Start pusher task for Prometheus push gateway
         val metricPusher = pushGatewayAddr.map({ new MetricPusher(_, pushInterval) })
@@ -102,20 +104,14 @@ object Config {
         val parser = new OptionParser[Config]("zkpipe") {
             head("zkpipe", "0.1")
 
-            opt[File]('d', "log-dir")
-                .valueName("<path>")
-                .action((x, c) => c.copy(logDir = Some(x)))
-                .validate(c => if (c.isDirectory) success else failure("Option `log-dir` should be a directory"))
-                .text("Zookeeper log directory to monitor changes")
+            help("help").abbr("h").text("show usage screen")
+
+            note("\n[Records]\n")
 
             opt[Range]('r', "range")
                 .valueName("<zxid:zxid>")
                 .action((x, c) => c.copy(zxidRange = x))
                 .text("sync Zookeeper transactions with id in the range (default `:`)")
-
-            opt[Unit]("from-latest")
-                .action((_, c) => c.copy(fromLatest = true))
-                .text("sync Zookeeper from latest transaction")
 
             opt[String]('p', "prefix")
                 .valueName("<path>")
@@ -126,17 +122,26 @@ object Config {
                 .action((x, c) => c.copy(checkCrc = x))
                 .text("check record data CRC correct (default: true)")
 
+            note("\n[Messages]\n")
+
+            opt[MessageFormat]('e', "encode")
+                .valueName("<format>")
+                .action((x, c) => c.copy(msgFormat = x))
+                .text("encode message in [pb, json, raw] format (default: json)")
+
             opt[Uri]('k', "kafka")
                 .valueName("<uri>")
                 .action((x, c) => c.copy(kafkaUri = x))
                 .validate(c => if (c.scheme.contains("kafka")) success else failure("Option `kafka` scheme should be `kafka://`"))
-                .text("sync records to Kafka")
+                .text("sync records to Kafka server (default: console)")
+
+            note("\n[Metrics]\n")
 
             opt[Uri]('m', "metrics-uri")
                 .valueName("<uri>")
                 .action((x, c) => c.copy(metricServerUri = Some(x)))
                 .validate(c => if (c.scheme.contains("http")) success else failure("Option `metrics` scheme should be `http://`"))
-                .text("serve metrics for Prometheus pull")
+                .text("serve metrics for Prometheus scrape in pull mode")
 
             opt[InetSocketAddress]("push-gateway")
                 .valueName("<addr>")
@@ -152,22 +157,42 @@ object Config {
                 .action((x, c) => c.copy(pushInterval = x))
                 .text("schedule to push metrics (default: 15 seconds)")
 
-            opt[Boolean]("jvm-metrics")
-                .action((x, c) => c.copy(jvmMetrics = x))
-                .text("provides JVM hotspot metrics (default: false)")
+            opt[Unit]("jvm-metrics")
+                .action((x, c) => c.copy(jvmMetrics = true))
+                .text("export JVM hotspot metrics (default: false)")
 
-            opt[MessageFormat]('f', "format")
-                .valueName("<format>")
-                .action((x, c) => c.copy(msgFormat = x))
-                .text("serialize message in [pb, json, raw] format (default: json)")
+            opt[Unit]("http-metrics")
+                .action((x, c) => c.copy(httpMetrics = true))
+                .text("export HTTP metrics (default: false)")
 
-            help("help").abbr("h").text("show usage screen")
+            note("\n[Commands]\n")
 
-            arg[File]("<file>...")
-                .unbounded()
-                .optional()
-                .action( (x, c) => c.copy(logFiles = c.logFiles :+ x) )
-                .text("sync Zookeeper log files")
+            cmd("watch").action( (_, c) => c.copy(mode = "watch") )
+                .text("watch Zookeeper binary log changes")
+                .children(
+                    opt[Unit]("from-latest")
+                        .action((_, c) => c.copy(fromLatest = true))
+                        .text("sync Zookeeper from latest transaction"),
+
+                    arg[File]("<path>")
+                        .required()
+                        .maxOccurs(1)
+                        .action((x, c) => c.copy(logDir = Some(x)))
+                        .validate(c => if (c.isDirectory) success else failure("should be a directory"))
+                        .text("Zookeeper log directory to monitor changes")
+                )
+
+            note("")
+
+            cmd("sync").action( (_, c) => c.copy(mode = "sync") )
+                .text("sync Zookeeper binary log files")
+                .children(
+                    arg[File]("<file>...")
+                        .required()
+                        .unbounded()
+                        .action( (x, c) => c.copy(logFiles = c.logFiles :+ x) )
+                        .text("sync Zookeeper log files")
+                )
         }
 
         parser.parse(args, Config())
@@ -193,16 +218,20 @@ object LogPipe extends LazyLogging {
             var services: Seq[Closeable] = config.initializeMetrics()
 
             try {
-                val changedFiles = config.logDir match {
-                    case Some(dir) =>
-                        val watcher = new LogWatcher(dir, checkCrc = config.checkCrc, fromLatest = config.fromLatest)
+                val changedFiles = config.mode match {
+                    case "watch" =>
+                        val watcher = new LogWatcher(config.logDir.get,
+                                                     checkCrc = config.checkCrc,
+                                                     fromLatest = config.fromLatest)
 
                         services = services :+ watcher
 
                         watcher.changedFiles
-                    case _ =>
+                    case "sync" =>
                         config.files map {
                             new LogFile(_)
+                        } sortBy {
+                            _.firstZxid
                         }
                 }
 
