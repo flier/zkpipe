@@ -1,16 +1,22 @@
 package zkpipe
 
-import java.io.Closeable
+import java.io.{Closeable, File}
 import java.lang.Long
+import java.util
 import java.util.Properties
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.{Counter, Gauge, Histogram}
+import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer._
-import org.apache.kafka.common.serialization.{LongSerializer, Serializer}
+import org.apache.kafka.common.TopicPartition
+import org.apache.kafka.common.requests.ListOffsetRequest
+import org.apache.kafka.common.serialization._
 
+import scala.collection.JavaConverters._
 import scala.concurrent.{Future, Promise}
+import scala.language.postfixOps
 
 trait SendResult {
     val record: LogRecord
@@ -34,21 +40,26 @@ class KafkaBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Brok
 {
     import KafkaBroker._
 
+    val DEFAULT_KAFKA_HOST: String = "localhost"
+    val DEFAULT_KAFKA_PORT: Int = 9092
+    val DEFAULT_KAFKA_TOPIC: String = "zkpipe"
+
     require(uri.scheme.contains("kafka"), "Have to starts with kafka://")
 
     private lazy val props = {
         val props = new Properties()
 
-        for (host <- uri.host; port <- uri.port) {
-            props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, s"$host:$port")
-        }
+        val host = uri.host.getOrElse(DEFAULT_KAFKA_HOST)
+        val port = uri.port.getOrElse(DEFAULT_KAFKA_PORT)
+
+        props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, s"$host:$port")
 
         uri.query.params.foreach { case (key, value) => props.put(key, value.get) }
 
         props
     }
 
-    lazy val topic: String = uri.path
+    lazy val topic: String = (uri.path split File.separator drop 1 headOption) getOrElse DEFAULT_KAFKA_TOPIC
 
     private var producerInitialized = false
 
@@ -91,5 +102,28 @@ class KafkaBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Brok
         )
 
         promise.future
+    }
+
+    def latestZxid(): Option[Long] = {
+        logger.debug(s"try to fetch latest zxid from Kafka topic `$topic`")
+
+        val consumer = new KafkaConsumer[Long, Array[Byte]](props, new LongDeserializer(), new ByteArrayDeserializer())
+
+        val partitions = consumer.partitionsFor(topic).asScala map {
+            partitionInfo => new TopicPartition(topic, partitionInfo.partition())
+        }
+
+        val endOffsets = consumer.endOffsets(partitions asJava)
+
+        logger.debug(s"found ${partitions.length} partitions: $endOffsets")
+
+        val (partition, offset) = endOffsets.asScala.toSeq.sortBy(_._2).last
+
+        consumer.assign(util.Arrays.asList(partition))
+        consumer.seek(partition, offset - 1)
+
+        val records = consumer.poll(1000).records(partition)
+
+        if (records.isEmpty) None else Some(records.asScala.head.key())
     }
 }

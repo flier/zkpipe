@@ -93,7 +93,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true) extend
 
             case Failure(err) =>
                 err match {
-                    case _: EOFException => logger.debug(s"EOF reached @ $position")
+                    case _: EOFException => logger.debug(s"EOF reached @ $position, zxid=$lastZxid")
                     case e: Exception => logger.warn(s"load `$filename` failed, ${e.getMessage}")
                 }
 

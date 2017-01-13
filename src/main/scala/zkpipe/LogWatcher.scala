@@ -17,7 +17,9 @@ object LogWatcher {
     val fileChanges: Counter = Counter.build().subsystem(SUBSYSTEM).name("changes").labelNames("dir", "kind").help("watched file changes").register()
 }
 
-class LogWatcher(dir: File, checkCrc: Boolean, fromLatest: Boolean) extends Closeable with LazyLogging{
+class LogWatcher(dir: File,
+                 checkCrc: Boolean = true,
+                 fromLatest: Boolean = false) extends Closeable with LazyLogging{
     import LogWatcher._
 
     require(dir.isDirectory, "can only watch directory")

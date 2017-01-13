@@ -15,4 +15,7 @@ Configuration:
         ref: Console
     logger:
       name: org.eclipse.jetty
-      level: info
+      level: warn
+    logger:
+      name: org.apache.kafka
+      level: warn

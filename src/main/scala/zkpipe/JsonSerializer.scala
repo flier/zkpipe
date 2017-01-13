@@ -25,10 +25,12 @@ object JsonSerializer {
     val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded JSON messages").register()
     val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
 
+    def base64(bytes: Array[Byte]): JValue = if (bytes == null) JNull else BaseEncoding.base64().encode(bytes)
+
     implicit def toJson(implicit txn: CreateTxn): JValue =
         "create" ->
             ("path" -> txn.getPath) ~
-                ("data" -> BaseEncoding.base64().encode(txn.getData)) ~
+                ("data" -> base64(txn.getData)) ~
                 ("acl" -> txn.getAcl.asScala.map({ acl =>
                     ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
                 })) ~
@@ -38,7 +40,7 @@ object JsonSerializer {
     implicit def toJson(implicit txn: CreateContainerTxn): JValue =
         "create-container" ->
             ("path" -> txn.getPath) ~
-                ("data" -> BaseEncoding.base64().encode(txn.getData)) ~
+                ("data" -> base64(txn.getData)) ~
                 ("acl" -> txn.getAcl.asScala.map({ acl =>
                     ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
                 })) ~
@@ -50,7 +52,7 @@ object JsonSerializer {
     implicit def toJson(implicit txn: SetDataTxn): JValue =
         "set-data" ->
             ("path" -> txn.getPath) ~
-                ("data" -> BaseEncoding.base64().encode(txn.getData)) ~
+                ("data" -> base64(txn.getData)) ~
                 ("version" -> txn.getVersion)
 
     implicit def toJson(implicit txn: CheckVersionTxn): JValue =

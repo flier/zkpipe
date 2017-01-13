@@ -30,7 +30,7 @@ import MessageFormats._
 case class Config(mode: String = null,
                   logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
-                  zxidRange: Range = 0 until Int.MaxValue,
+                  zxidRange: Option[Range] = None,
                   fromLatest: Boolean = false,
                   pathPrefix: String = "/",
                   checkCrc: Boolean = true,
@@ -85,12 +85,13 @@ object Config {
     def parse(args: Array[String]): Option[Config] = {
         implicit val messageFormatRead: Read[MessageFormat] = Read.reads(MessageFormats withName)
         implicit val uriRead: Read[Uri] = Read.reads(Uri.parse)
-        implicit val rangeRead: Read[Range] = Read.reads(s =>
+        implicit val rangeRead: Read[Option[Range]] = Read.reads(s =>
             s.split(':') match {
-                case Array(low) => low.toInt until Int.MaxValue
-                case Array("", upper) => 0 until upper.toInt
-                case Array(low, upper) => low.toInt until upper.toInt
-                case Array() => Int.MinValue until Int.MaxValue
+                case Array(low) => Some(low.toInt until Int.MaxValue)
+                case Array("", upper) => Some(0 until upper.toInt)
+                case Array(low, upper) => Some(low.toInt until upper.toInt)
+                case Array() => Some(Int.MinValue until Int.MaxValue) // `:`
+                case Array("") => None // ``
             }
         )
         implicit val addrRead: Read[InetSocketAddress] = Read.reads( addr =>
@@ -108,7 +109,7 @@ object Config {
 
             note("\n[Records]\n")
 
-            opt[Range]('r', "range")
+            opt[Option[Range]]('r', "range")
                 .valueName("<zxid:zxid>")
                 .action((x, c) => c.copy(zxidRange = x))
                 .text("sync Zookeeper transactions with id in the range (default `:`)")
@@ -129,7 +130,7 @@ object Config {
                 .action((x, c) => c.copy(msgFormat = x))
                 .text("encode message in [pb, json, raw] format (default: json)")
 
-            opt[Uri]('k', "kafka")
+            opt[Uri]('k', "kafka-uri")
                 .valueName("<uri>")
                 .action((x, c) => c.copy(kafkaUri = x))
                 .validate(c => if (c.scheme.contains("kafka")) success else failure("Option `kafka` scheme should be `kafka://`"))
@@ -172,7 +173,7 @@ object Config {
                 .children(
                     opt[Unit]("from-latest")
                         .action((_, c) => c.copy(fromLatest = true))
-                        .text("sync Zookeeper from latest transaction"),
+                        .text("sync Zookeeper from latest transaction in binary logs"),
 
                     arg[File]("<path>")
                         .required()
@@ -235,8 +236,20 @@ object LogPipe extends LazyLogging {
                         }
                 }
 
+                var zxidRange = config.zxidRange
+
                 val broker = if (config.kafkaUri != null) {
-                    new KafkaBroker(config.kafkaUri, config.valueSerializer)
+                    val kafkaBroker = new KafkaBroker(config.kafkaUri, config.valueSerializer)
+
+                    if (!config.fromLatest && config.zxidRange.isEmpty) {
+                        val latestZxid = kafkaBroker.latestZxid()
+
+                        zxidRange = latestZxid.map(_.toInt until Int.MaxValue)
+
+                        logger.info(s"auto resume from zxid=$latestZxid")
+                    }
+
+                    kafkaBroker
                 } else {
                     new LogConsole(config.valueSerializer)
                 }
@@ -245,7 +258,7 @@ object LogPipe extends LazyLogging {
 
                 run(changedFiles,
                     broker,
-                    zxidRange = config.zxidRange,
+                    zxidRange = zxidRange.getOrElse(Int.MinValue until Int.MaxValue),
                     pathPrefix = config.pathPrefix)
             } finally {
                 logger.info("closing services")
