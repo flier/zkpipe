@@ -22,7 +22,7 @@ trait Broker extends Closeable {
     def send(log: LogRecord): Future[SendResult]
 }
 
-object LogBroker {
+object KafkaBroker {
     val SUBSYSTEM: String = "kafka"
     val sending: Gauge = Gauge.build().subsystem(SUBSYSTEM).name("sending").labelNames("topic").help("Kafka sending messages").register()
     val sent: Counter = Counter.build().subsystem(SUBSYSTEM).name("sent").labelNames("topic").help("Kafka send succeeded messages").register()
@@ -30,9 +30,9 @@ object LogBroker {
     val sendLatency: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("send_latency").labelNames("topic").help("Kafka send latency").register()
 }
 
-class LogBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging
+class KafkaBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging
 {
-    import LogBroker._
+    import KafkaBroker._
 
     require(uri.scheme.contains("kafka"), "Have to starts with kafka://")
 

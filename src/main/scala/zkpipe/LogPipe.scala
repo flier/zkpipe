@@ -236,7 +236,7 @@ object LogPipe extends LazyLogging {
                 }
 
                 val broker = if (config.kafkaUri != null) {
-                    new LogBroker(config.kafkaUri, config.valueSerializer)
+                    new KafkaBroker(config.kafkaUri, config.valueSerializer)
                 } else {
                     new LogConsole(config.valueSerializer)
                 }
