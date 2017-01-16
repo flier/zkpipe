@@ -13,6 +13,7 @@ import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization._
 
+import scala.beans.{BeanInfoSkip, BeanProperty}
 import scala.collection.JavaConverters._
 import scala.concurrent.{Future, Promise}
 import scala.language.postfixOps
@@ -35,9 +36,24 @@ object KafkaBroker {
     val sendLatency: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("send_latency").labelNames("topic").help("Kafka send latency").register()
 }
 
-class KafkaBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Broker with LazyLogging
+trait KafkaBrokerMBean {
+    @BeanInfoSkip
+    val uri: Uri
+
+    def getUri: String = uri.toString()
+
+    def getTopic: String
+
+    def close(): Unit
+}
+
+class KafkaBroker(val uri: Uri,
+                  valueSerializer: Serializer[LogRecord])
+    extends JMXExport with KafkaBrokerMBean with Broker with LazyLogging
 {
     import KafkaBroker._
+
+    mbean(this)
 
     val DEFAULT_KAFKA_HOST: String = "localhost"
     val DEFAULT_KAFKA_PORT: Int = 9092
@@ -58,6 +74,7 @@ class KafkaBroker(uri: Uri, valueSerializer: Serializer[LogRecord]) extends Brok
         props
     }
 
+    @BeanProperty
     lazy val topic: String = (uri.path split File.separator drop 1 headOption) getOrElse DEFAULT_KAFKA_TOPIC
 
     private var producerInitialized = false

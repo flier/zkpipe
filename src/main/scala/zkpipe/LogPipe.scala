@@ -14,6 +14,7 @@ import nl.grons.metrics.scala.DefaultInstrumented
 import scopt.{OptionParser, Read}
 import org.apache.kafka.common.serialization.Serializer
 
+import scala.beans.{BeanInfoSkip, BeanProperty, BooleanBeanProperty}
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
 import scala.language.{implicitConversions, postfixOps}
@@ -27,21 +28,82 @@ object MessageFormats extends Enumeration {
 
 import MessageFormats._
 
-case class Config(mode: String = null,
+trait ConfigMBean {
+    @BeanInfoSkip
+    val logFiles: Seq[File]
+
+    @BeanInfoSkip
+    val logDir: Option[File]
+
+    @BeanInfoSkip
+    val zxidRange: Option[Range]
+
+    @BeanInfoSkip
+    val kafkaUri: Uri
+
+    @BeanInfoSkip
+    val metricServerUri: Option[Uri]
+
+    @BeanInfoSkip
+    val reportUri: Option[Uri]
+
+    @BeanInfoSkip
+    val pushInterval: Duration
+
+    @BeanInfoSkip
+    val msgFormat: MessageFormat
+
+    def getMode: String
+
+    def getLogFiles: String = logFiles mkString ","
+
+    def getLogDirectory: String = logDir.map(_.toString).orNull
+
+    def getZxidRange: String = zxidRange.toString
+
+    def isFromLatest: Boolean
+
+    def getPathPrefix: String
+
+    def getKafkaUri: String = kafkaUri.toString()
+
+    def getMetricServerUri: String = metricServerUri.map(_.toString()).orNull
+
+    def getReportUri: String = reportUri.map(_.toString()).orNull
+
+    def getPushInterval: Long = pushInterval.toSeconds
+
+    def isCheckCrc: Boolean
+
+    def isJvmMetrics: Boolean
+
+    def isHttpMetrics: Boolean
+
+    def getMessageFormat: String = msgFormat.toString
+}
+
+case class Config(@BeanProperty
+                  mode: String = null,
                   logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Option[Range] = None,
+                  @BooleanBeanProperty
                   fromLatest: Boolean = false,
+                  @BeanProperty
                   pathPrefix: String = "/",
+                  @BooleanBeanProperty
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
                   metricServerUri: Option[Uri] = None,
                   pushGatewayAddr: Option[InetSocketAddress] = None,
                   reportUri: Option[Uri] = None,
                   pushInterval: Duration = 15 second,
+                  @BooleanBeanProperty
                   jvmMetrics: Boolean = false,
+                  @BooleanBeanProperty
                   httpMetrics: Boolean = false,
-                  msgFormat: MessageFormat = json) extends DefaultInstrumented with LazyLogging
+                  msgFormat: MessageFormat = json)
+    extends ConfigMBean with DefaultInstrumented with LazyLogging
 {
     lazy val files: Seq[File] = logFiles flatMap { file =>
         if (file.isDirectory)
@@ -212,10 +274,12 @@ class LogConsole(valueSerializer: Serializer[LogRecord]) extends Broker with Laz
     override def close(): Unit = {}
 }
 
-object LogPipe extends LazyLogging {
+object LogPipe extends JMXExport with LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
+            mbean(config)
+
             var services: Seq[Closeable] = config.initializeMetrics()
 
             try {

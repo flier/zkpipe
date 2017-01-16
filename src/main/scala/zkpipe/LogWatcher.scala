@@ -1,12 +1,15 @@
 package zkpipe
 
 import java.io.{Closeable, File}
+import java.{lang, util}
 import java.nio.file.StandardWatchEventKinds.{ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY}
 import java.nio.file.{FileSystems, Path, WatchKey, WatchService}
+import java.util.Collections
 
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.Counter
 
+import scala.beans.BeanInfoSkip
 import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.language.postfixOps
@@ -17,10 +20,21 @@ object LogWatcher {
     val fileChanges: Counter = Counter.build().subsystem(SUBSYSTEM).name("changes").labelNames("dir", "kind").help("watched file changes").register()
 }
 
-class LogWatcher(dir: File,
-                 checkCrc: Boolean = true,
-                 fromLatest: Boolean = false) extends Closeable with LazyLogging{
+trait LogWatcherMBean {
+    @BeanInfoSkip
+    val dir: File
+
+    def getDirectory: String = dir.getAbsolutePath
+}
+
+class LogWatcher(val dir: File,
+                 val checkCrc: Boolean = true,
+                 val fromLatest: Boolean = false)
+    extends JMXExport with LogWatcherMBean with Closeable with LazyLogging
+{
     import LogWatcher._
+
+    mbean(this)
 
     require(dir.isDirectory, "can only watch directory")
 
@@ -62,7 +76,7 @@ class LogWatcher(dir: File,
         }
     }
 
-    val watcher: WatchService = FileSystems.getDefault.newWatchService()
+    private val watcher: WatchService = FileSystems.getDefault.newWatchService()
 
     val watchKeys: mutable.Map[WatchKey, Path] = mutable.Map.empty ++
         Map(dir.toPath.register(watcher, ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY) -> dir.toPath)

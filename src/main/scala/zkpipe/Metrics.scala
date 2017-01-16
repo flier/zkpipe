@@ -23,11 +23,28 @@ import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.servlet.{ServletContextHandler, ServletHolder}
 
 import scala.async.Async.async
+import scala.beans.{BeanInfoSkip, BeanProperty, BooleanBeanProperty}
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.duration.Duration
 import scala.concurrent.ExecutionContext.Implicits.global
 
-class MetricServer(uri: Uri, httpMetrics: Boolean) extends DefaultInstrumented with LazyLogging with Closeable {
+trait MetricServerMBean {
+    @BeanInfoSkip
+    val uri: Uri
+
+    def getUri: String = uri.toString
+
+    def isHttpMetrics: Boolean
+
+    def close(): Unit
+}
+
+class MetricServer(val uri: Uri,
+                   @BooleanBeanProperty val httpMetrics: Boolean)
+    extends JMXExport with MetricServerMBean with DefaultInstrumented with LazyLogging with Closeable
+{
+    mbean(this)
+
     val DEFAULT_HOST = "localhost"
     val DEFAULT_PORT = 9091
 
@@ -70,13 +87,31 @@ class MetricServer(uri: Uri, httpMetrics: Boolean) extends DefaultInstrumented w
     }
 }
 
-class MetricPusher(addr: InetSocketAddress,
-                   interval: Duration,
+trait MetricPusherMBean {
+    @BeanInfoSkip
+    val addr: InetSocketAddress
+
+    @BeanInfoSkip
+    val interval: Duration
+
+    val getAddress: String = addr.toString
+
+    def getInterval: Long = interval.toSeconds
+
+    def flush(): Unit
+
+    def close(): Unit
+}
+
+class MetricPusher(val addr: InetSocketAddress,
+                   val interval: Duration,
                    jobName: String = "zkpipe",
                    collectorRegistry: CollectorRegistry = CollectorRegistry.defaultRegistry)
-    extends DefaultInstrumented with LazyLogging with Closeable
+    extends JMXExport with MetricPusherMBean with DefaultInstrumented with LazyLogging with Closeable
 {
-    val host = s"${addr.getHostString}:${addr.getPort}"
+    mbean(this)
+
+    val host: String = s"${addr.getHostString}:${addr.getPort}"
     val gateway = new PushGateway(host)
 
     var timer = new Timer
@@ -91,7 +126,7 @@ class MetricPusher(addr: InetSocketAddress,
             logger.debug(s"schedule to push metrics per $interval")
 
             Try(timer.schedule(new TimerTask {
-                def run(): Unit = push(false)
+                def run(): Unit = flush()
             }, interval.toMillis, interval.toMillis))
         case Failure(err) =>
             logger.warn(s"fail to push metrics to push gateway @ $addr, $err")
@@ -110,6 +145,8 @@ class MetricPusher(addr: InetSocketAddress,
         pushTimes += 1
     }
 
+    def flush(): Unit = push(false)
+
     override def close(): Unit = {
         logger.info("stop to push metrics")
 
@@ -119,13 +156,31 @@ class MetricPusher(addr: InetSocketAddress,
     }
 }
 
-class MetricReporter(uri: Uri, interval: Duration, prefix: String = "zkpipe")
-    extends DefaultInstrumented with LazyLogging with Closeable
+trait MetricReporterMBean {
+    @BeanInfoSkip
+    val uri: Uri
+
+    @BeanInfoSkip
+    val interval: Duration
+
+    def getUri: String = uri.toString()
+
+    def getInterval: Long = interval.toSeconds
+
+    def close(): Unit
+}
+
+class MetricReporter(val uri: Uri,
+                     val interval: Duration,
+                     prefix: String = "zkpipe")
+    extends JMXExport with MetricReporterMBean with DefaultInstrumented with LazyLogging with Closeable
 {
     val DEFAULT_HOST = "localhost"
     val DEFAULT_GRAPHITE_PORT = 2003
     val DEFAULT_PICKLE_PORT = 2003
     val DEFAULT_GANGLIA_PORT = 8649
+
+    mbean(this)
 
     val addr = new InetSocketAddress(uri.host.get, uri.port.get)
     val reporter: ScheduledReporter = uri.scheme.get match {
