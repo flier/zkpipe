@@ -124,13 +124,6 @@ object Config {
                 case Array("") => None                                      // ``
             }
         )
-        implicit val addrRead: Read[InetSocketAddress] = Read.reads( addr =>
-            addr.split(':') match {
-                case Array(host, port) => new InetSocketAddress(host, port.toInt)
-                case Array(host) => new InetSocketAddress(host, 9091)
-                case _ => throw new IllegalArgumentException(s"`$addr` is not a valid address")
-            }
-        )
 
         val parser = new OptionParser[Config]("zkpipe") {
             head("zkpipe", "0.1")
@@ -179,9 +172,13 @@ object Config {
                 .validate(c => if (c.scheme.contains("http")) success else failure("Option `metrics` scheme should be `http://`"))
                 .text("serve metrics for Prometheus scrape in pull mode")
 
-            opt[InetSocketAddress]("push-gateway")
+            opt[String]("push-gateway")
                 .valueName("<addr>")
-                .action((x, c) => c.copy(pushGatewayAddr = Some(x)))
+                .action((x, c) => c.copy(pushGatewayAddr = x.split(':') match {
+                    case Array(host, port) => Some(new InetSocketAddress(host, port.toInt))
+                    case Array(host) => Some(new InetSocketAddress(host, MetricPusher.DEFAULT_PUSH_GATEWAY_PORT))
+                    case _ => throw new IllegalArgumentException(s"`$x` is not a valid address")
+                }))
                 .text("push metrics to the Prometheus push gateway")
 
             opt[Uri]("report-uri")

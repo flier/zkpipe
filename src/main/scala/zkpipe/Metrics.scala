@@ -79,6 +79,10 @@ class MetricServer(val uri: Uri,
     override def getUri: String = uri.toString
 }
 
+object MetricPusher {
+    val DEFAULT_PUSH_GATEWAY_PORT: Int = 9091
+}
+
 class MetricPusher(val addr: InetSocketAddress,
                    val interval: Duration,
                    jobName: String = "zkpipe",
