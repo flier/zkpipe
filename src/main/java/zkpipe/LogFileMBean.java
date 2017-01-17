@@ -3,7 +3,7 @@ package zkpipe;
 public interface LogFileMBean {
     String getFilename();
 
-    Boolean isValid();
+    Boolean isValidated();
 
     Boolean isClosed();
 
