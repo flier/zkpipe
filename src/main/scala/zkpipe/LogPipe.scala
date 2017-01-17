@@ -14,6 +14,8 @@ import io.prometheus.client.hotspot.DefaultExports
 import nl.grons.metrics.scala.DefaultInstrumented
 import scopt.{OptionParser, Read}
 import org.apache.kafka.common.serialization.Serializer
+import org.apache.logging.log4j.core.config.Configurator
+import org.apache.logging.log4j.{Level, LogManager, Logger}
 
 import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.collection.JavaConverters._
@@ -31,6 +33,7 @@ import MessageFormats._
 
 case class Config(@BeanProperty
                   mode: String = null,
+                  logLevel: Option[Level] = None,
                   logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Option[Range] = None,
@@ -133,6 +136,13 @@ object Config {
             head("zkpipe", "0.1")
 
             help("help").abbr("h").text("show usage screen")
+
+            opt[Unit]('v', "verbose")
+                .action((_, c) => c.copy(logLevel = Some(Level.INFO)))
+                .text("show verbose messages")
+            opt[Unit]('d', "debug")
+                .action((_, c) => c.copy(logLevel = Some(Level.DEBUG)))
+                .text("show debug messages")
 
             note("\n[Records]\n")
 
@@ -261,6 +271,8 @@ object LogPipe extends JMXExport with LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
+            config.logLevel foreach Configurator.setRootLevel
+
             mbean(config)
 
             var services: Seq[Closeable] = config.initializeMetrics()
