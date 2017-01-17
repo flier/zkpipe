@@ -141,10 +141,7 @@ class LogFile(val file: File,
         record
     }
 
-    var firstZxid: Option[Long] = file.getName match {
-        case LogFilename(zxid) => Some(zxid.toLong)
-        case _ => Try(records.head.zxid).map(Some(_)).getOrElse(None)
-    }
+    var firstZxid: Option[Long] = Try(records.head.zxid).toOption
 
     var lastZxid: Option[Long] = None
 
