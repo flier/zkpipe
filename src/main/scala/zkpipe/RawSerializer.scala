@@ -3,13 +3,16 @@ package zkpipe
 import java.util
 
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.{Counter, Summary}
+import nl.grons.metrics.scala.{Histogram, Meter}
 import org.apache.kafka.common.serialization.Serializer
+import zkpipe.JsonSerializer.metrics
 
 object RawSerializer {
     val SUBSYSTEM = "raw"
-    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").help("encoded raw messages").register()
-    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
+
+    val encodeRecords: Meter = metrics.meter("encoded-records", SUBSYSTEM)
+    val encodeBytes: Meter = metrics.meter("encoded-bytes", SUBSYSTEM)
+    val recordSize: Histogram = metrics.histogram("record-size", SUBSYSTEM)
 }
 
 class RawSerializer extends Serializer[LogRecord] with LazyLogging {
@@ -18,8 +21,9 @@ class RawSerializer extends Serializer[LogRecord] with LazyLogging {
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 
     override def serialize(topic: String, data: LogRecord): Array[Byte] = {
-        records.inc()
-        size.observe(data.bytes.length)
+        encodeRecords.mark()
+        encodeBytes.mark(data.bytes.length)
+        recordSize += data.bytes.length
 
         data.bytes
     }

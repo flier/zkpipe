@@ -6,7 +6,7 @@ import java.util
 
 import com.google.common.io.BaseEncoding
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.{Counter, Summary}
+import nl.grons.metrics.scala.{DefaultInstrumented, Histogram, Meter}
 import org.apache.jute.BinaryInputArchive
 import org.apache.kafka.common.serialization.Serializer
 import org.apache.zookeeper.ZooDefs.OpCode
@@ -20,10 +20,12 @@ import scala.collection.JavaConverters._
 import scala.language.postfixOps
 import scala.util.Try
 
-object JsonSerializer {
+object JsonSerializer extends DefaultInstrumented {
     val SUBSYSTEM: String = "json"
-    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded JSON messages").register()
-    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded JSON messages").register()
+
+    val encodeRecords: Meter = metrics.meter("encoded-records", SUBSYSTEM)
+    val encodeBytes: Meter = metrics.meter("encoded-bytes", SUBSYSTEM)
+    val recordSize: Histogram = metrics.histogram("record-size", SUBSYSTEM)
 
     def base64(bytes: Array[Byte]): JValue = if (bytes == null) JNull else BaseEncoding.base64().encode(bytes)
 
@@ -138,11 +140,11 @@ class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, A
                 ("record" -> record.orNull)
         )
 
-        records.labels(log.opcode.toString).inc()
-
         val bytes = (if (printPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
 
-        size.observe(bytes.length)
+        encodeRecords.mark()
+        encodeBytes.mark(bytes.length)
+        recordSize += bytes.length
 
         bytes
     }

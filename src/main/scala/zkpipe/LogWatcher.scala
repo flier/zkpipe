@@ -6,15 +6,19 @@ import java.nio.file.{FileSystems, Path, WatchKey, WatchService}
 
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.Counter
+import nl.grons.metrics.scala.{DefaultInstrumented, Meter}
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 
-object LogWatcher {
+object LogWatcher extends DefaultInstrumented {
     val SUBSYSTEM = "watcher"
-    val fileChanges: Counter = Counter.build().subsystem(SUBSYSTEM).name("changes").labelNames("dir", "kind").help("watched file changes").register()
+
+    val fileChangesByteType: Counter = Counter.build().subsystem(SUBSYSTEM).name("changes").labelNames("dir", "kind").help("watched file changes").register()
+
+    val fileChanges: Meter = metrics.meter("file-changes", SUBSYSTEM)
 }
 
 class LogWatcher(val dir: File,
@@ -111,21 +115,23 @@ class LogWatcher(val dir: File,
                 case ENTRY_MODIFY => "modified"
             })
 
+            fileChanges.mark()
+
             watchEvent.kind match {
                 case ENTRY_CREATE =>
-                    fileChanges.labels(dirname.toString, "create").inc()
+                    fileChangesByteType.labels(dirname.toString, "create").inc()
 
                     Some(watchFiles.getOrElseUpdate(filename, new LogFile(filename.toFile, checkCrc = checkCrc)))
 
                 case ENTRY_DELETE =>
-                    fileChanges.labels(dirname.toString, "delete").inc()
+                    fileChangesByteType.labels(dirname.toString, "delete").inc()
 
                     watchFiles.remove(filename).foreach(_.close())
 
                     None
 
                 case ENTRY_MODIFY =>
-                    fileChanges.labels(dirname.toString, "modified").inc()
+                    fileChangesByteType.labels(dirname.toString, "modified").inc()
 
                     val logFile = watchFiles.get(filename) match {
                         case Some(log: LogFile) =>

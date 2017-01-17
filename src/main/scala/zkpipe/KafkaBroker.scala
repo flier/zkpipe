@@ -4,14 +4,17 @@ import java.io.{Closeable, File}
 import java.lang.Long
 import java.util
 import java.util.Properties
+import java.util.concurrent.TimeUnit
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.{Counter, Gauge, Histogram}
+import nl.grons.metrics.scala._
 import org.apache.kafka.clients.consumer.KafkaConsumer
 import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization._
+import com.github.nscala_time.time.StaticDateTime.now
+import com.github.nscala_time.time.Imports._
 
 import scala.beans.BeanProperty
 import scala.collection.JavaConverters._
@@ -28,12 +31,13 @@ trait Broker extends Closeable {
     def send(log: LogRecord): Future[SendResult]
 }
 
-object KafkaBroker {
+object KafkaBroker extends DefaultInstrumented {
     val SUBSYSTEM: String = "kafka"
-    val sending: Gauge = Gauge.build().subsystem(SUBSYSTEM).name("sending").labelNames("topic").help("Kafka sending messages").register()
-    val sent: Counter = Counter.build().subsystem(SUBSYSTEM).name("sent").labelNames("topic").help("Kafka send succeeded messages").register()
-    val error: Counter = Counter.build().subsystem(SUBSYSTEM).name("error").labelNames("topic").help("Kafka send failed message").register()
-    val sendLatency: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("send_latency").labelNames("topic").help("Kafka send latency").register()
+
+    val sendingMessages: Meter = metrics.meter("sending-messages", SUBSYSTEM)
+    val sentMessages: Meter = metrics.meter("sent-messages", SUBSYSTEM)
+    val sendErrors: Meter = metrics.meter("send-errors", SUBSYSTEM)
+    val sendLatency: Timer = metrics.timer("send-latency", SUBSYSTEM)
 }
 
 class KafkaBroker(val uri: Uri,
@@ -82,24 +86,21 @@ class KafkaBroker(val uri: Uri,
     }
 
     override def send(log: LogRecord): Future[SendResult] = {
+        sendingMessages.mark()
+
         val promise = Promise[SendResult]()
-
-        sending.labels(topic).inc()
-
-        val t = sendLatency.labels(topic).startTimer()
+        val startTime = now()
 
         producer.send(new ProducerRecord(topic, log.zxid, log),
             (metadata: RecordMetadata, exception: Exception) => {
-                sending.labels(topic).dec()
-
-                t.close()
+                sendLatency.update((startTime to now()).toDurationMillis, TimeUnit.MILLISECONDS)
 
                 if (exception == null) {
-                    sent.labels(topic).inc()
+                    sentMessages.mark()
 
                     promise success KafkaResult(log, metadata)
                 } else {
-                    error.labels(topic).inc()
+                    sendErrors.mark()
 
                     promise failure exception
                 }

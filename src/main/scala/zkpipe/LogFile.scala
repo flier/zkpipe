@@ -1,17 +1,16 @@
 package zkpipe
 
-import java.beans.ConstructorProperties
 import java.io.{Closeable, EOFException, File, FileInputStream}
 import java.nio.file.Path
 import java.util.zip.Adler32
 
 import com.google.common.io.CountingInputStream
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.{Counter, Gauge, Histogram, Summary}
 import org.apache.jute.BinaryInputArchive
 import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
 import com.github.nscala_time.time.StaticDateTime.now
 import com.github.nscala_time.time.Imports._
+import nl.grons.metrics.scala.{Counter, DefaultInstrumented, Histogram, Meter}
 
 import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.util.matching.Regex
@@ -23,14 +22,14 @@ case class EORException() extends Exception("Last transaction was partial")
 
 case class IteratorException() extends Exception("iterator has finished")
 
-object LogFile {
+object LogFile extends DefaultInstrumented {
     val SUBSYSTEM: String = "file"
-    val opening: Gauge = Gauge.build().subsystem(SUBSYSTEM).name("opening").help("opening files").register()
-    val crcErrors: Counter = Counter.build().subsystem(SUBSYSTEM).name("crc_errors").labelNames("filename").help("read record failed, CRC error").register()
-    val readBytes: Counter = Counter.build().subsystem(SUBSYSTEM).name("read_bytes").labelNames("filename").help("read bytes").register()
-    val readRecords: Counter = Counter.build().subsystem(SUBSYSTEM).name("read_records").labelNames("filename").help("read records").register()
-    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("record size").register()
-    val delay: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("delay").help("sync delay").register()
+
+    val crcErrors: Counter = metrics.counter("crc-errors", SUBSYSTEM)
+    val readBytes: Meter = metrics.meter("read-bytes", SUBSYSTEM)
+    val readRecords: Meter = metrics.meter("read-records", SUBSYSTEM)
+    val recordSize: Histogram = metrics.histogram("record-size", SUBSYSTEM)
+    val recordLatency: Histogram = metrics.histogram("read-latency", SUBSYSTEM)
 
     val LogFilename: Regex = """log\.(\d+)""".r
 }
@@ -68,14 +67,13 @@ class LogFile(val file: File,
 
     def position(): Long = cis.getCount
 
+    readBytes.mark(position())
+
     if (offset > position) {
         logger.debug(s"skip to offset $offset")
 
         cis.skip(offset-position)
     }
-
-    opening.inc()
-    readBytes.labels(filename).inc(position())
 
     @BooleanBeanProperty
     def isValid: Boolean = header.getMagic == FileTxnLog.TXNLOG_MAGIC
@@ -123,7 +121,7 @@ class LogFile(val file: File,
             crc.update(bytes, 0, bytes.length)
 
             if (crc.getValue != crcValue) {
-                crcErrors.labels(filename).inc()
+                crcErrors += 1
 
                 throw CRCException()
             }
@@ -133,10 +131,10 @@ class LogFile(val file: File,
 
         val record: LogRecord = new LogRecord(bytes)
 
-        readBytes.labels(filename).inc(cis.getCount - pos)
-        readRecords.labels(filename).inc()
-        size.observe(bytes.length)
-        delay.observe((record.time to now).millis)
+        readBytes.mark(position() - pos)
+        readRecords.mark()
+        recordSize += bytes.length
+        recordLatency += (record.time to now).millis
 
         record
     }
@@ -150,8 +148,6 @@ class LogFile(val file: File,
             logger.info(s"close `$filename`")
 
             cis.close()
-
-            opening.dec()
 
             closed = true
         }

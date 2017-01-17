@@ -4,16 +4,21 @@ import org.apache.zookeeper.ZooDefs.{OpCode, Perms}
 import com.github.nscala_time.time.Imports._
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.Counter
+import nl.grons.metrics.scala.{DefaultInstrumented, Histogram, Meter}
 import org.apache.jute.Record
 import org.apache.zookeeper.server.util.SerializeUtils
 import org.apache.zookeeper.txn._
 
 import scala.language.postfixOps
 
-object LogRecord{
+object LogRecord extends DefaultInstrumented {
     val SUBSYSTEM: String = "decode"
-    val decodeRecords: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("decoded records").register()
-    val decodeBytes: Counter = Counter.build().subsystem(SUBSYSTEM).name("bytes").help("decoded bytes").register()
+
+    val recordByType: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("decoded records").register()
+
+    val totalRecords: Meter = metrics.meter("total-records")
+    val totalBytes: Meter = metrics.meter("total-bytes")
+    val recordSize: Histogram = metrics.histogram("record-size")
 }
 
 object TxnTypes extends Enumeration {
@@ -80,6 +85,8 @@ class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
         case _ => None
     }
 
-    decodeRecords.labels(opcode.toString).inc()
-    decodeBytes.inc(bytes.length)
+    recordByType.labels(opcode.toString).inc()
+    totalRecords.mark()
+    totalBytes.mark(bytes.length)
+    recordSize += bytes.length
 }

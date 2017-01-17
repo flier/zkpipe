@@ -14,8 +14,7 @@ Configuration:
       AppenderRef:
         ref: Console
     logger:
-      name: org.eclipse.jetty
-      level: warn
-    logger:
-      name: org.apache.kafka
-      level: warn
+      - name: org.eclipse.jetty
+        level: warn
+      - name: org.apache.kafka
+        level: warn

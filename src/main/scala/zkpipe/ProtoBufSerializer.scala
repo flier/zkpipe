@@ -5,11 +5,12 @@ import java.util
 
 import com.google.protobuf.ByteString
 import com.typesafe.scalalogging.LazyLogging
-import io.prometheus.client.{Counter, Summary}
+import nl.grons.metrics.scala.{Histogram, Meter}
 import org.apache.jute.BinaryInputArchive
 import org.apache.kafka.common.serialization.Serializer
 import org.apache.zookeeper.ZooDefs.OpCode
 import org.apache.zookeeper.txn._
+import zkpipe.JsonSerializer.metrics
 import zkpipe.TransactionOuterClass.{ACL, CheckVersion, Create, CreateContainer, CreateSession, Delete, Error, Header, Id, Message, SetACL, SetData, Transaction}
 
 import scala.collection.JavaConverters._
@@ -17,8 +18,10 @@ import scala.language.postfixOps
 
 object ProtoBufSerializer {
     val SUBSYSTEM: String = "pb"
-    val records: Counter = Counter.build().subsystem(SUBSYSTEM).name("records").labelNames("type").help("encoded protobuf messages").register()
-    val size: Summary = Summary.build().subsystem(SUBSYSTEM).name("size").help("size of encoded protobuf messages").register()
+
+    val encodeRecords: Meter = metrics.meter("encoded-records", SUBSYSTEM)
+    val encodeBytes: Meter = metrics.meter("encoded-bytes", SUBSYSTEM)
+    val recordSize: Histogram = metrics.histogram("record-size", SUBSYSTEM)
 
     implicit def toProtoBuf(implicit txn: CreateTxn): Transaction =
         Transaction.newBuilder()
@@ -181,11 +184,11 @@ class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
 
         record foreach { builder.setRecord }
 
-        records.labels(log.opcode.toString).inc()
-
         val bytes = builder.build().toByteArray
 
-        size.observe(bytes.length)
+        encodeRecords.mark()
+        encodeBytes.mark(bytes.length)
+        recordSize += bytes.length
 
         bytes
     }
