@@ -17,7 +17,6 @@ import org.apache.kafka.common.serialization.Serializer
 
 import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.concurrent.Future
 import scala.language.{implicitConversions, postfixOps, reflectiveCalls}
 import scala.concurrent.duration._
@@ -37,6 +36,9 @@ case class Config(@BeanProperty
                   zxidRange: Option[Range] = None,
                   pathPrefix: Option[String] = None,
                   matchPattern: Option[Pattern] = None,
+                  sessionId: Option[Long] = None,
+                  @BooleanBeanProperty
+                  ignoreSession: Boolean = false,
                   @BooleanBeanProperty
                   fromLatest: Boolean = false,
                   @BooleanBeanProperty
@@ -100,6 +102,8 @@ case class Config(@BeanProperty
 
     override def getMatchPattern: String = matchPattern.map(_.pattern()).orNull
 
+    override def getSessionId: Long = sessionId.getOrElse(-1)
+
     override def getKafkaUri: String = kafkaUri.toString()
 
     override def getMetricServerUri: String = metricServerUri.map(_.toString()).orNull
@@ -146,6 +150,15 @@ object Config {
                 .valueName("<pattern>")
                 .action((x, c) => c.copy(matchPattern = Some(Pattern.compile(x))))
                 .text("filter transactions those path match pattern")
+
+            opt[Long]('s', "session-id")
+                .valueName("<id>")
+                .action((x, c) => c.copy(sessionId = Some(x)))
+                .text("filter transactions with the session ID")
+
+            opt[Unit]("ignore-session")
+                .action((_, c) => c.copy(ignoreSession = true))
+                .text("ignore Zookeeper session events")
 
             opt[Boolean]("check-crc")
                 .action((x, c) => c.copy(checkCrc = x))
@@ -292,12 +305,10 @@ object LogPipe extends JMXExport with LazyLogging {
 
                 run(changedFiles, broker, zxidRange, { record =>
                     zxidRange.forall(_ contains record.zxid.toInt) &&
-                    config.pathPrefix.forall({ prefix =>
-                        record.path.forall(_.startsWith(prefix))
-                    }) &&
-                    config.matchPattern.forall({ pattern =>
-                        record.path.forall(pattern.matcher(_).matches())
-                    })
+                    config.pathPrefix.forall({ prefix => record.path.forall(_.startsWith(prefix)) }) &&
+                    config.matchPattern.forall({ pattern => record.path.forall(pattern.matcher(_).matches()) }) &&
+                    config.sessionId.forall({record.session == _}) &&
+                    (!config.ignoreSession || !(Seq(TxnTypes.CreateSession, TxnTypes.CloseSession) contains record.opcode))
                 })
             } finally {
                 services.foreach(_.close())

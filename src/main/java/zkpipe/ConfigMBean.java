@@ -13,6 +13,10 @@ public interface ConfigMBean {
 
     String getMatchPattern();
 
+    long getSessionId();
+
+    boolean isIgnoreSession();
+
     boolean isFromLatest();
 
     String getKafkaUri();

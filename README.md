@@ -58,7 +58,7 @@ Please check [FileSystem.getPathMatcher](https://docs.oracle.com/javase/7/docs/a
 
 ## Filter 
 
-`watch` or `sync` command can filter transactions with [zxid range](#zxid-range), [path prefix](#path-prefix) or [match pattern](#match-pattern).
+`watch` or `sync` command can filter transactions with filters.
 
 ### zxid Range
 
@@ -81,6 +81,18 @@ Please check [FileSystem.getPathMatcher](https://docs.oracle.com/javase/7/docs/a
 `--match <pattern>` option filter transaction act on the node that path matches pattern in the regular expression. 
 
 > zkpipe [options] --match ^/broker/.*
+
+### Session ID
+
+`--session-id <id>` option filter transaction with the session ID
+
+> zkpipe [options] --session-id 97295928260820996
+
+### Ignore Session Events
+
+`--ignore-session` option ignore all the Zookeeper session events, including CreateSession, CloseSession etc.
+
+> zkpipe [options] --ignore-session
 
 ## Encoding Format
 
