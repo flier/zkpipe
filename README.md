@@ -14,10 +14,10 @@ Consume Zookeeper binary log to sync filtered transactions to Kafka topic.
 # Usage
 
 [watch](#watch) and [sync](#sync) command consume changed or [filtered](#filter) transactions from the Zookeeper binary log files, 
-send [encoded](#encoding-format) message to Kafka topic defined in the `--kafka-uri` option
+send [encoded](#encoding-format) message to Kafka topic that defined in the `--kafka-uri` option.
 
 ## Watch 
-`watch` log directory and continue to sync changed transactions to kafka that `--kafka-uri` option defined.
+`watch` log directory and continue to sync changed transactions to kafka that defined in the `--kafka-uri` option.
 
 > zkpipe watch \<log dir\> --kafka-uri \<uri\>
 
@@ -29,7 +29,7 @@ $ zkpipe watch /usr/local/var/run/zookeeper/data/version-2/ --kafka-uri=kafka://
 By default, `zkpipe` will auto resume the sync progress from the latest transaction in the Kafka topic, 
 `--from-latest` option skip the sync progress to the latest zxid in the Zookeeper binary logs. 
 
-> zkpipe watch \<log dir\> --kafka-uri \<uri\> --from-latest
+> zkpipe watch \<log dir\> [options] --from-latest
 
 ```bash
 $ zkpipe watch /usr/local/var/run/zookeeper/data/version-2/ --kafka-uri=kafka://localhost/zkpipe --from-latest
@@ -44,7 +44,7 @@ $ zkpipe watch /usr/local/var/run/zookeeper/data/version-2/ --kafka-uri=kafka://
 $ zkpipe sync /usr/local/var/run/zookeeper/data/version-2/log.c7
 ```
 
-When the syntax is "glob" then the `File` representation of the path is matched using a limited pattern language that resembles regular expressions but with a simpler syntax. For example:
+When the syntax is "glob" then the `log files` representation of the path is matched using a limited pattern language that resembles regular expressions but with a simpler syntax. For example:
 
 - *.java	Matches a path that represents a file name ending in .java
 - *.*	Matches file names containing a dot
@@ -58,9 +58,9 @@ Please check [FileSystem.getPathMatcher](https://docs.oracle.com/javase/7/docs/a
 
 ## Filter 
 
-`watch` or `sync` command can filter transactions with `zxid range` or `path prefix`.
+`watch` or `sync` command can filter transactions with [zxid range](#zxid-range), [path prefix](#path-prefix) or [match pattern](#match-pattern).
 
-### `zxid` Range
+### zxid Range
 
 `--range <zxid:zxid>` option filter transaction in the `zxid` range
 - `<low>:` matches transactions `zxid` lager than `low` value
@@ -68,13 +68,19 @@ Please check [FileSystem.getPathMatcher](https://docs.oracle.com/javase/7/docs/a
 - `<low>:<high>` matches transactions `zxid` between `low` and `high` value
 - `:` matches all transactions
 
+> zkpipe [options] --range 238:250
+
 ### Path Prefix
 
 `--prefix <path>` option filter transaction act on the node that have same path prefix.
 
-### Match Regular Expression
+> zkpipe [options] --prefix /broker
+
+### Match Pattern
 
 `--match <pattern>` option filter transaction act on the node that path matches pattern in the regular expression. 
+
+> zkpipe [options] --match ^/broker/.*
 
 ## Encoding Format
 
@@ -84,6 +90,8 @@ Please check [FileSystem.getPathMatcher](https://docs.oracle.com/javase/7/docs/a
 - `json` encode transaction in JSON format
 - `raw` transaction in raw Zookeeper format 
 
+> zkpipe [options] --encode pb
+
 # Metrics
 
 `zkpipe` will serve metrics for Prometheus scrape or reports metrics to Graphite or Ganglia server.
@@ -92,11 +100,11 @@ Please check [FileSystem.getPathMatcher](https://docs.oracle.com/javase/7/docs/a
 
 `zkpipe` serve metrics for [Prometheus](https://prometheus.io/) scrape in pull mode, that defined in the `--metrics-uri <uri>` option defined. 
 
-> zkpipe watch \<log dir\> --kafka-uri \<uri\> --metrics-uri http://localhost/metrics
+> zkpipe watch \<log dir\> [options] --metrics-uri http://<host>\[:port\]/<topic>
 
 When deploy `zkpipe` behind firewall or without public IP address, use `--push-gateway <addr>` option to push metrics to the Prometheus [push gateway](https://prometheus.io/docs/practices/pushing/).
 
-> zkpipe watch \<log dir\> --kafka-uri \<uri\> --push-gateway localhost:9091
+> zkpipe watch \<log dir\> [options] --push-gateway <host>\[:port\]
 
 ## Graphite
 
@@ -106,15 +114,15 @@ When deploy `zkpipe` behind firewall or without public IP address, use `--push-g
 
 The [pickle protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.html#the-pickle-protocol) is a much more efficient take on the plaintext protocol, and supports sending batches of metrics.
 
-> zkpipe watch \<log dir\> --kafka-uri \<uri\> --report-uri pickle://<host>\[:port\]
+> zkpipe watch \<log dir\> [options] --report-uri pickle://<host>\[:port\]
 
 ## Ganglia
 
 `zkpipe` report metrics to the [Ganglia](http://ganglia.info/) server that defined in the `--report-uri <uri>` option.
 
-> zkpipe watch \<log dir\> --kafka-uri \<uri\> --report-uri ganglia://<host>\[:port\]
+> zkpipe watch \<log dir\> [options] --report-uri ganglia://<host>\[:port\]
 
-# Example
+# Records
 
 `zkpipe` support all the Zookeeper transaction type, please check ProtoBuf schema for more detail.
 
