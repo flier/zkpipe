@@ -12,7 +12,7 @@ import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
 import com.github.nscala_time.time.StaticDateTime.now
 import com.github.nscala_time.time.Imports._
 
-import scala.beans.{BeanInfoSkip, BeanProperty, BooleanBeanProperty}
+import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.util.matching.Regex
 import scala.util.{Failure, Success, Try}
 
@@ -32,29 +32,6 @@ object LogFile {
     val delay: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("delay").help("sync delay").register()
 
     val LogFilename: Regex = """log\.(\d+)""".r
-}
-
-trait LogFileMBean {
-    @BeanInfoSkip
-    def position(): Long
-
-    @BeanInfoSkip
-    var firstZxid: Option[Long]
-
-    @BeanInfoSkip
-    var lastZxid: Option[Long]
-
-    def getFilename: String
-
-    def isValid: Boolean
-
-    def isClosed: Boolean
-
-    def getPosition: Long = position()
-
-    def getFirstZxid: Long = firstZxid.getOrElse(-1)
-
-    def getLastZxid: Long = lastZxid.getOrElse(-1)
 }
 
 class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true)
@@ -177,4 +154,10 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true)
             closed = true
         }
     }
+
+    override def getPosition: Long = position()
+
+    override def getFirstZxid: Long = firstZxid.getOrElse(-1)
+
+    override def getLastZxid: Long = lastZxid.getOrElse(-1)
 }

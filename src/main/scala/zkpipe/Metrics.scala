@@ -23,21 +23,10 @@ import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.servlet.{ServletContextHandler, ServletHolder}
 
 import scala.async.Async.async
-import scala.beans.{BeanInfoSkip, BeanProperty, BooleanBeanProperty}
+import scala.beans.BooleanBeanProperty
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.duration.Duration
 import scala.concurrent.ExecutionContext.Implicits.global
-
-trait MetricServerMBean {
-    @BeanInfoSkip
-    val uri: Uri
-
-    def getUri: String = uri.toString
-
-    def isHttpMetrics: Boolean
-
-    def close(): Unit
-}
 
 class MetricServer(val uri: Uri,
                    @BooleanBeanProperty val httpMetrics: Boolean)
@@ -85,22 +74,8 @@ class MetricServer(val uri: Uri,
 
         server.stop()
     }
-}
 
-trait MetricPusherMBean {
-    @BeanInfoSkip
-    val addr: InetSocketAddress
-
-    @BeanInfoSkip
-    val interval: Duration
-
-    val getAddress: String = addr.toString
-
-    def getInterval: Long = interval.toSeconds
-
-    def flush(): Unit
-
-    def close(): Unit
+    override def getUri: String = uri.toString
 }
 
 class MetricPusher(val addr: InetSocketAddress,
@@ -154,20 +129,10 @@ class MetricPusher(val addr: InetSocketAddress,
 
         gateway.delete(jobName)
     }
-}
 
-trait MetricReporterMBean {
-    @BeanInfoSkip
-    val uri: Uri
+    override val getAddress: String = addr.toString
 
-    @BeanInfoSkip
-    val interval: Duration
-
-    def getUri: String = uri.toString()
-
-    def getInterval: Long = interval.toSeconds
-
-    def close(): Unit
+    override def getInterval: Long = interval.toSeconds
 }
 
 class MetricReporter(val uri: Uri,
@@ -235,4 +200,8 @@ class MetricReporter(val uri: Uri,
 
         reporter.stop()
     }
+
+    override def getUri: String = uri.toString()
+
+    override def getInterval: Long = interval.toSeconds
 }

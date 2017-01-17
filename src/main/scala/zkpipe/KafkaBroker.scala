@@ -13,7 +13,7 @@ import org.apache.kafka.clients.producer._
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.common.serialization._
 
-import scala.beans.{BeanInfoSkip, BeanProperty}
+import scala.beans.BeanProperty
 import scala.collection.JavaConverters._
 import scala.concurrent.{Future, Promise}
 import scala.language.postfixOps
@@ -34,17 +34,6 @@ object KafkaBroker {
     val sent: Counter = Counter.build().subsystem(SUBSYSTEM).name("sent").labelNames("topic").help("Kafka send succeeded messages").register()
     val error: Counter = Counter.build().subsystem(SUBSYSTEM).name("error").labelNames("topic").help("Kafka send failed message").register()
     val sendLatency: Histogram = Histogram.build().subsystem(SUBSYSTEM).name("send_latency").labelNames("topic").help("Kafka send latency").register()
-}
-
-trait KafkaBrokerMBean {
-    @BeanInfoSkip
-    val uri: Uri
-
-    def getUri: String = uri.toString()
-
-    def getTopic: String
-
-    def close(): Unit
 }
 
 class KafkaBroker(val uri: Uri,
@@ -142,4 +131,6 @@ class KafkaBroker(val uri: Uri,
 
         if (records.isEmpty) None else Some(records.asScala.head.key())
     }
+
+    override def getUri: String = uri.toString()
 }

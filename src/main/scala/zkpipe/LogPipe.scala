@@ -14,7 +14,7 @@ import nl.grons.metrics.scala.DefaultInstrumented
 import scopt.{OptionParser, Read}
 import org.apache.kafka.common.serialization.Serializer
 
-import scala.beans.{BeanInfoSkip, BeanProperty, BooleanBeanProperty}
+import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
 import scala.language.{implicitConversions, postfixOps}
@@ -27,60 +27,6 @@ object MessageFormats extends Enumeration {
 }
 
 import MessageFormats._
-
-trait ConfigMBean {
-    @BeanInfoSkip
-    val logFiles: Seq[File]
-
-    @BeanInfoSkip
-    val logDir: Option[File]
-
-    @BeanInfoSkip
-    val zxidRange: Option[Range]
-
-    @BeanInfoSkip
-    val kafkaUri: Uri
-
-    @BeanInfoSkip
-    val metricServerUri: Option[Uri]
-
-    @BeanInfoSkip
-    val reportUri: Option[Uri]
-
-    @BeanInfoSkip
-    val pushInterval: Duration
-
-    @BeanInfoSkip
-    val msgFormat: MessageFormat
-
-    def getMode: String
-
-    def getLogFiles: String = logFiles mkString ","
-
-    def getLogDirectory: String = logDir.map(_.toString).orNull
-
-    def getZxidRange: String = zxidRange.toString
-
-    def isFromLatest: Boolean
-
-    def getPathPrefix: String
-
-    def getKafkaUri: String = kafkaUri.toString()
-
-    def getMetricServerUri: String = metricServerUri.map(_.toString()).orNull
-
-    def getReportUri: String = reportUri.map(_.toString()).orNull
-
-    def getPushInterval: Long = pushInterval.toSeconds
-
-    def isCheckCrc: Boolean
-
-    def isJvmMetrics: Boolean
-
-    def isHttpMetrics: Boolean
-
-    def getMessageFormat: String = msgFormat.toString
-}
 
 case class Config(@BeanProperty
                   mode: String = null,
@@ -141,6 +87,22 @@ case class Config(@BeanProperty
 
         Seq() ++ metricServer ++ metricPusher ++ metricReporter
     }
+
+    override def getLogFiles: String = logFiles mkString ","
+
+    override def getLogDirectory: String = logDir.map(_.toString).orNull
+
+    override def getZxidRange: String = zxidRange.toString
+
+    override def getKafkaUri: String = kafkaUri.toString()
+
+    override def getMetricServerUri: String = metricServerUri.map(_.toString()).orNull
+
+    override def getReportUri: String = reportUri.map(_.toString()).orNull
+
+    override def getPushInterval: Long = pushInterval.toSeconds
+
+    override def getMessageFormat: String = msgFormat.toString
 }
 
 object Config {

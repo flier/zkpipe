@@ -1,15 +1,12 @@
 package zkpipe
 
 import java.io.{Closeable, File}
-import java.{lang, util}
 import java.nio.file.StandardWatchEventKinds.{ENTRY_CREATE, ENTRY_DELETE, ENTRY_MODIFY}
 import java.nio.file.{FileSystems, Path, WatchKey, WatchService}
-import java.util.Collections
 
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.Counter
 
-import scala.beans.BeanInfoSkip
 import scala.collection.mutable
 import scala.collection.JavaConverters._
 import scala.language.postfixOps
@@ -18,13 +15,6 @@ import scala.util.{Failure, Success, Try}
 object LogWatcher {
     val SUBSYSTEM = "watcher"
     val fileChanges: Counter = Counter.build().subsystem(SUBSYSTEM).name("changes").labelNames("dir", "kind").help("watched file changes").register()
-}
-
-trait LogWatcherMBean {
-    @BeanInfoSkip
-    val dir: File
-
-    def getDirectory: String = dir.getAbsolutePath
 }
 
 class LogWatcher(val dir: File,
@@ -161,4 +151,6 @@ class LogWatcher(val dir: File,
 
         changedFiles
     }
+
+    override def getDirectory: String = dir.getAbsolutePath
 }
