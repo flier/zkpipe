@@ -3,6 +3,8 @@ package zkpipe;
 public interface ConfigMBean {
     String getMode();
 
+    String getLoggingLevel();
+
     String getLogFiles();
 
     String getLogDirectory();

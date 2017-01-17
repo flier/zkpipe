@@ -15,7 +15,7 @@ import nl.grons.metrics.scala.DefaultInstrumented
 import scopt.{OptionParser, Read}
 import org.apache.kafka.common.serialization.Serializer
 import org.apache.logging.log4j.core.config.Configurator
-import org.apache.logging.log4j.{Level, LogManager, Logger}
+import org.apache.logging.log4j.Level
 
 import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.collection.JavaConverters._
@@ -33,7 +33,7 @@ import MessageFormats._
 
 case class Config(@BeanProperty
                   mode: String = null,
-                  logLevel: Option[Level] = None,
+                  loggingLevel: Option[Level] = None,
                   logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Option[Range] = None,
@@ -95,6 +95,8 @@ case class Config(@BeanProperty
         Seq() ++ metricServer ++ metricPusher ++ metricReporter
     }
 
+    override def getLoggingLevel: String = loggingLevel.toString
+
     override def getLogFiles: String = logFiles mkString ","
 
     override def getLogDirectory: String = logDir.map(_.toString).orNull
@@ -138,10 +140,10 @@ object Config {
             help("help").abbr("h").text("show usage screen")
 
             opt[Unit]('v', "verbose")
-                .action((_, c) => c.copy(logLevel = Some(Level.INFO)))
+                .action((_, c) => c.copy(loggingLevel = Some(Level.INFO)))
                 .text("show verbose messages")
             opt[Unit]('d', "debug")
-                .action((_, c) => c.copy(logLevel = Some(Level.DEBUG)))
+                .action((_, c) => c.copy(loggingLevel = Some(Level.DEBUG)))
                 .text("show debug messages")
 
             note("\n[Records]\n")
@@ -271,7 +273,7 @@ object LogPipe extends JMXExport with LazyLogging {
     def main(args: Array[String]): Unit = {
         for (config <- Config.parse(args))
         {
-            config.logLevel foreach Configurator.setRootLevel
+            config.loggingLevel foreach Configurator.setRootLevel
 
             mbean(config)
 
