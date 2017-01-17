@@ -9,9 +9,11 @@ public interface ConfigMBean {
 
     String getZxidRange();
 
-    boolean isFromLatest();
-
     String getPathPrefix();
+
+    String getMatchPattern();
+
+    boolean isFromLatest();
 
     String getKafkaUri();
 

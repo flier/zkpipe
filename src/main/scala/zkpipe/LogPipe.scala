@@ -4,6 +4,7 @@ import java.io.{Closeable, File, PrintWriter, StringWriter}
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
+import java.util.regex.Pattern
 
 import com.codahale.metrics.JmxReporter
 import com.netaporter.uri.Uri
@@ -16,8 +17,9 @@ import org.apache.kafka.common.serialization.Serializer
 
 import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.concurrent.Future
-import scala.language.{implicitConversions, postfixOps}
+import scala.language.{implicitConversions, postfixOps, reflectiveCalls}
 import scala.concurrent.duration._
 
 object MessageFormats extends Enumeration {
@@ -33,10 +35,10 @@ case class Config(@BeanProperty
                   logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Option[Range] = None,
+                  pathPrefix: Option[String] = None,
+                  matchPattern: Option[Pattern] = None,
                   @BooleanBeanProperty
                   fromLatest: Boolean = false,
-                  @BeanProperty
-                  pathPrefix: String = "/",
                   @BooleanBeanProperty
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
@@ -94,6 +96,10 @@ case class Config(@BeanProperty
 
     override def getZxidRange: String = zxidRange.toString
 
+    override def getPathPrefix: String = pathPrefix.orNull
+
+    override def getMatchPattern: String = matchPattern.map(_.pattern()).orNull
+
     override def getKafkaUri: String = kafkaUri.toString()
 
     override def getMetricServerUri: String = metricServerUri.map(_.toString()).orNull
@@ -111,11 +117,11 @@ object Config {
         implicit val uriRead: Read[Uri] = Read.reads(Uri.parse)
         implicit val rangeRead: Read[Option[Range]] = Read.reads(s =>
             s.split(':') match {
-                case Array(low) => Some(low.toInt until Int.MaxValue)
-                case Array("", upper) => Some(0 until upper.toInt)
-                case Array(low, upper) => Some(low.toInt until upper.toInt)
-                case Array() => Some(Int.MinValue until Int.MaxValue) // `:`
-                case Array("") => None // ``
+                case Array(low) => Some(low.toInt until Int.MaxValue)       // `<low>:`
+                case Array("", high) => Some(0 until high.toInt)            // `:<high>`
+                case Array(low, high) => Some(low.toInt until high.toInt)   // `<low>:<high>`
+                case Array() => Some(Int.MinValue until Int.MaxValue)       // `:`
+                case Array("") => None                                      // ``
             }
         )
         implicit val addrRead: Read[InetSocketAddress] = Read.reads( addr =>
@@ -136,12 +142,17 @@ object Config {
             opt[Option[Range]]('r', "range")
                 .valueName("<zxid:zxid>")
                 .action((x, c) => c.copy(zxidRange = x))
-                .text("sync Zookeeper transactions with id in the range (default `:`)")
+                .text("filter transactions those zxid in the range")
 
             opt[String]('p', "prefix")
                 .valueName("<path>")
-                .action((x, c) => c.copy(pathPrefix = x))
-                .text("sync Zookeeper transactions with path prefix (default: `/`)")
+                .action((x, c) => c.copy(pathPrefix = Some(x)))
+                .text("filter transactions those path match prefix")
+
+            opt[String]('m', "match")
+                .valueName("<pattern>")
+                .action((x, c) => c.copy(matchPattern = Some(Pattern.compile(x))))
+                .text("filter transactions those path match pattern")
 
             opt[Boolean]("check-crc")
                 .action((x, c) => c.copy(checkCrc = x))
@@ -282,32 +293,39 @@ object LogPipe extends JMXExport with LazyLogging {
 
                 services = services :+ broker
 
-                run(changedFiles,
-                    broker,
-                    zxidRange = zxidRange.getOrElse(Int.MinValue until Int.MaxValue),
-                    pathPrefix = config.pathPrefix)
+                run(changedFiles, broker, zxidRange, { record =>
+                    zxidRange.forall(_ contains record.zxid.toInt) &&
+                    config.pathPrefix.forall({ prefix =>
+                        record.path.forall(_.startsWith(prefix))
+                    }) &&
+                    config.matchPattern.forall({ pattern =>
+                        record.path.forall(pattern.matcher(_).matches())
+                    })
+                })
             } finally {
-                logger.info("closing services")
-
-                services.reverse.foreach(_.close())
+                services.foreach(_.close())
             }
         }
     }
 
-    def run(changedFiles: Traversable[LogFile], broker: Broker, zxidRange: Range, pathPrefix: String): Unit = {
+    def run(changedFiles: Traversable[LogFile], broker: Broker, zxidRange: Option[Range], matcher: (LogRecord) => Boolean): Unit =
+    {
         try {
             changedFiles foreach { logFile =>
-                if (logFile.firstZxid.exists(_ < zxidRange.end)) {
-                    logger.info(s"sync log file ${logFile.filename} ...")
+                try {
+                    for (
+                        zxid <- logFile.firstZxid
+                        if zxidRange.forall(zxid.toInt < _.end)
+                    ) {
+                        logger.info(s"sync log file ${logFile.filename} ...")
 
-                    logFile.records filter { r =>
-                        (zxidRange contains r.zxid.toInt) && r.path.forall(_.startsWith(pathPrefix))
-                    } foreach { r =>
-                        broker.send(r)
+                        logFile.records filter {
+                            matcher
+                        } foreach {
+                            broker.send
+                        }
                     }
-                } else {
-                    logger.info(s"skip log file ${logFile.filename} not in $zxidRange")
-
+                } finally {
                     logFile.close()
                 }
             }
