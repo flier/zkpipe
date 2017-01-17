@@ -1,10 +1,9 @@
 package zkpipe
 
 import java.io.{Closeable, File}
-import java.lang.Long
-import java.util
+import java.{lang, util}
 import java.util.Properties
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{Semaphore, TimeUnit}
 
 import com.netaporter.uri.Uri
 import com.typesafe.scalalogging.LazyLogging
@@ -38,10 +37,12 @@ object KafkaBroker extends DefaultInstrumented {
     val sentMessages: Meter = metrics.meter("sent-messages", SUBSYSTEM)
     val sendErrors: Meter = metrics.meter("send-errors", SUBSYSTEM)
     val sendLatency: Timer = metrics.timer("send-latency", SUBSYSTEM)
+    val pendingTime: Timer = metrics.timer("pending-time", SUBSYSTEM)
 }
 
 class KafkaBroker(val uri: Uri,
-                  valueSerializer: Serializer[LogRecord])
+                  valueSerializer: Serializer[LogRecord],
+                  sendQueueSize: Option[Int])
     extends JMXExport with KafkaBrokerMBean with Broker with LazyLogging
 {
     import KafkaBroker._
@@ -70,9 +71,11 @@ class KafkaBroker(val uri: Uri,
     @BeanProperty
     lazy val topic: String = (uri.path split File.separator drop 1 headOption) getOrElse DEFAULT_KAFKA_TOPIC
 
+    val sendQueueLock: Option[Semaphore] = sendQueueSize.map(new Semaphore(_))
+
     private var producerInitialized = false
 
-    lazy val producer: KafkaProducer[Long, LogRecord] = {
+    lazy val producer: KafkaProducer[lang.Long, LogRecord] = {
         producerInitialized = true
 
         new KafkaProducer(props, new LongSerializer(), valueSerializer)
@@ -86,6 +89,8 @@ class KafkaBroker(val uri: Uri,
     }
 
     override def send(log: LogRecord): Future[SendResult] = {
+        sendQueueLock foreach { lock => pendingTime.time { lock.acquire() } }
+
         sendingMessages.mark()
 
         val promise = Promise[SendResult]()
@@ -93,6 +98,8 @@ class KafkaBroker(val uri: Uri,
 
         producer.send(new ProducerRecord(topic, log.zxid, log),
             (metadata: RecordMetadata, exception: Exception) => {
+                sendQueueLock foreach { _.release() }
+
                 sendLatency.update((startTime to now()).toDurationMillis, TimeUnit.MILLISECONDS)
 
                 if (exception == null) {
@@ -113,7 +120,7 @@ class KafkaBroker(val uri: Uri,
     def latestZxid(): Option[Long] = {
         logger.debug(s"try to fetch latest zxid from Kafka topic `$topic`")
 
-        val consumer = new KafkaConsumer[Long, Array[Byte]](props, new LongDeserializer(), new ByteArrayDeserializer())
+        val consumer = new KafkaConsumer[lang.Long, Array[Byte]](props, new LongDeserializer(), new ByteArrayDeserializer())
 
         val partitions = consumer.partitionsFor(topic).asScala map {
             partitionInfo => new TopicPartition(topic, partitionInfo.partition())

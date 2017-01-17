@@ -45,6 +45,8 @@ case class Config(@BeanProperty
                   @BooleanBeanProperty
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
+                  msgFormat: MessageFormat = json,
+                  sendQueueSize: Option[Int] = None,
                   metricServerUri: Option[Uri] = None,
                   pushGatewayAddr: Option[InetSocketAddress] = None,
                   reportUri: Option[Uri] = None,
@@ -52,8 +54,7 @@ case class Config(@BeanProperty
                   @BooleanBeanProperty
                   jvmMetrics: Boolean = false,
                   @BooleanBeanProperty
-                  httpMetrics: Boolean = false,
-                  msgFormat: MessageFormat = json)
+                  httpMetrics: Boolean = false)
     extends ConfigMBean with DefaultInstrumented with LazyLogging
 {
     lazy val files: Seq[File] = logFiles flatMap { file =>
@@ -109,13 +110,15 @@ case class Config(@BeanProperty
 
     override def getKafkaUri: String = kafkaUri.toString()
 
+    override def getMessageFormat: String = msgFormat.toString
+
+    override def getSendQueueSize: Int = sendQueueSize.getOrElse(-1)
+
     override def getMetricServerUri: String = metricServerUri.map(_.toString()).orNull
 
     override def getReportUri: String = reportUri.map(_.toString()).orNull
 
     override def getPushInterval: Long = pushInterval.toSeconds
-
-    override def getMessageFormat: String = msgFormat.toString
 }
 
 object Config extends JMXExport {
@@ -180,6 +183,11 @@ object Config extends JMXExport {
                 .valueName("<format>")
                 .action((x, c) => c.copy(msgFormat = x))
                 .text("encode message in [pb, json, raw] format (default: json)")
+
+            opt[Int]("send-queue")
+                .valueName("<size>")
+                .action((x, c) => c.copy(sendQueueSize = Some(x)))
+                .text("maximum send queue size (default: unlimit)")
 
             opt[Uri]('k', "kafka-uri")
                 .valueName("<uri>")

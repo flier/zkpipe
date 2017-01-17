@@ -23,6 +23,10 @@ public interface ConfigMBean {
 
     String getKafkaUri();
 
+    String getMessageFormat();
+
+    int getSendQueueSize();
+
     String getMetricServerUri();
 
     String getReportUri();
@@ -34,7 +38,5 @@ public interface ConfigMBean {
     boolean isJvmMetrics();
 
     boolean isHttpMetrics();
-
-    String getMessageFormat();
 }
 
