@@ -1,7 +1,7 @@
 package zkpipe
 
+import java.beans.ConstructorProperties
 import java.io.{Closeable, EOFException, File, FileInputStream}
-import java.lang
 import java.nio.file.Path
 import java.util.zip.Adler32
 
@@ -13,7 +13,7 @@ import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
 import com.github.nscala_time.time.StaticDateTime.now
 import com.github.nscala_time.time.Imports._
 
-import scala.beans.BeanProperty
+import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.util.matching.Regex
 import scala.util.{Failure, Success, Try}
 
@@ -35,7 +35,11 @@ object LogFile {
     val LogFilename: Regex = """log\.(\d+)""".r
 }
 
-class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true)
+class LogFile(val file: File,
+              @BeanProperty
+              val offset: Long = 0,
+              @BooleanBeanProperty
+              val checkCrc: Boolean = true)
     extends JMXExport with LogFileMBean with Closeable with LazyLogging
 {
     import LogFile._
@@ -55,6 +59,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true)
     private val cis: CountingInputStream = new CountingInputStream(new FileInputStream(file))
     private val stream: BinaryInputArchive = BinaryInputArchive.getArchive(cis)
 
+    @BooleanBeanProperty
     var closed: Boolean = false
 
     val header = new FileHeader()
@@ -72,6 +77,7 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true)
     opening.inc()
     readBytes.labels(filename).inc(position())
 
+    @BooleanBeanProperty
     def isValid: Boolean = header.getMagic == FileTxnLog.TXNLOG_MAGIC
 
     def skipToEnd: LogRecord = {
@@ -153,10 +159,6 @@ class LogFile(val file: File, offset: Long = 0, checkCrc: Boolean = true)
             closed = true
         }
     }
-
-    override def isValidated: lang.Boolean = isValid
-
-    override def isClosed: lang.Boolean = closed
 
     override def getPosition: Long = position()
 

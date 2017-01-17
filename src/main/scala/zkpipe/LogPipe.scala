@@ -1,7 +1,6 @@
 package zkpipe
 
 import java.io.{Closeable, File, PrintWriter, StringWriter}
-import java.lang
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
@@ -15,7 +14,7 @@ import nl.grons.metrics.scala.DefaultInstrumented
 import scopt.{OptionParser, Read}
 import org.apache.kafka.common.serialization.Serializer
 
-import scala.beans.BeanProperty
+import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.collection.JavaConverters._
 import scala.concurrent.Future
 import scala.language.{implicitConversions, postfixOps}
@@ -34,16 +33,20 @@ case class Config(@BeanProperty
                   logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Option[Range] = None,
+                  @BooleanBeanProperty
                   fromLatest: Boolean = false,
                   @BeanProperty
                   pathPrefix: String = "/",
+                  @BooleanBeanProperty
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
                   metricServerUri: Option[Uri] = None,
                   pushGatewayAddr: Option[InetSocketAddress] = None,
                   reportUri: Option[Uri] = None,
                   pushInterval: Duration = 15 second,
+                  @BooleanBeanProperty
                   jvmMetrics: Boolean = false,
+                  @BooleanBeanProperty
                   httpMetrics: Boolean = false,
                   msgFormat: MessageFormat = json)
     extends ConfigMBean with DefaultInstrumented with LazyLogging
@@ -100,14 +103,6 @@ case class Config(@BeanProperty
     override def getPushInterval: Long = pushInterval.toSeconds
 
     override def getMessageFormat: String = msgFormat.toString
-
-    override def isFromLatest: lang.Boolean = fromLatest
-
-    override def isCheckCrc: lang.Boolean = checkCrc
-
-    override def isJvmMetrics: lang.Boolean = jvmMetrics
-
-    override def isHttpMetrics: lang.Boolean = httpMetrics
 }
 
 object Config {

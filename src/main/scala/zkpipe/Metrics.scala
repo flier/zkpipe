@@ -1,7 +1,6 @@
 package zkpipe
 
 import java.io.Closeable
-import java.lang
 import java.net.InetSocketAddress
 import java.util.concurrent.TimeUnit
 import java.util.{Timer, TimerTask}
@@ -24,11 +23,13 @@ import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.servlet.{ServletContextHandler, ServletHolder}
 
 import scala.async.Async.async
+import scala.beans.BooleanBeanProperty
 import scala.util.{Failure, Success, Try}
 import scala.concurrent.duration.Duration
 import scala.concurrent.ExecutionContext.Implicits.global
 
 class MetricServer(val uri: Uri,
+                   @BooleanBeanProperty
                    val httpMetrics: Boolean)
     extends JMXExport with MetricServerMBean with DefaultInstrumented with LazyLogging with Closeable
 {
@@ -76,8 +77,6 @@ class MetricServer(val uri: Uri,
     }
 
     override def getUri: String = uri.toString
-
-    override def isHttpMetrics: lang.Boolean = httpMetrics
 }
 
 class MetricPusher(val addr: InetSocketAddress,

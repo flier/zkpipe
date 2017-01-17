@@ -9,7 +9,7 @@ public interface ConfigMBean {
 
     String getZxidRange();
 
-    Boolean isFromLatest();
+    boolean isFromLatest();
 
     String getPathPrefix();
 
@@ -21,11 +21,11 @@ public interface ConfigMBean {
 
     long getPushInterval();
 
-    Boolean isCheckCrc();
+    boolean isCheckCrc();
 
-    Boolean isJvmMetrics();
+    boolean isJvmMetrics();
 
-    Boolean isHttpMetrics();
+    boolean isHttpMetrics();
 
     String getMessageFormat();
 }

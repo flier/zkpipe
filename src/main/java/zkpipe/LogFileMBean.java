@@ -3,9 +3,11 @@ package zkpipe;
 public interface LogFileMBean {
     String getFilename();
 
-    Boolean isValidated();
+    long getOffset();
 
-    Boolean isClosed();
+    boolean isValid();
+
+    boolean isClosed();
 
     long getPosition();
 
