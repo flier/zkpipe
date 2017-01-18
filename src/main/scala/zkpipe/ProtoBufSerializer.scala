@@ -14,7 +14,7 @@ import zkpipe.JsonSerializer.metrics
 import zkpipe.TransactionOuterClass.{ACL, CheckVersion, Create, CreateContainer, CreateSession, Delete, Error, Header, Id, Message, SetACL, SetData, Transaction}
 
 import scala.collection.JavaConverters._
-import scala.language.postfixOps
+import scala.language.{implicitConversions, postfixOps}
 
 object ProtoBufSerializer {
     val SUBSYSTEM: String = "pb"
@@ -23,7 +23,7 @@ object ProtoBufSerializer {
     val encodeBytes: Meter = metrics.meter("encoded-bytes", SUBSYSTEM)
     val recordSize: Histogram = metrics.histogram("record-size", SUBSYSTEM)
 
-    implicit def toProtoBuf(implicit txn: CreateTxn): Transaction =
+    implicit def toProtoBuf(txn: CreateTxn): Transaction =
         Transaction.newBuilder()
             .setCreate(
                 Create.newBuilder()
@@ -43,7 +43,7 @@ object ProtoBufSerializer {
             )
             .build()
 
-    implicit def toProtoBuf(implicit txn: CreateContainerTxn): Transaction =
+    implicit def toProtoBuf(txn: CreateContainerTxn): Transaction =
         Transaction.newBuilder()
             .setCreateContainer(
                 CreateContainer.newBuilder()
@@ -62,7 +62,7 @@ object ProtoBufSerializer {
             )
             .build()
 
-    implicit def toProtoBuf(implicit txn: DeleteTxn): Transaction =
+    implicit def toProtoBuf(txn: DeleteTxn): Transaction =
         Transaction.newBuilder()
             .setDelete(
                 Delete.newBuilder()
@@ -70,7 +70,7 @@ object ProtoBufSerializer {
             )
             .build()
 
-    implicit def toProtoBuf(implicit txn: SetDataTxn): Transaction =
+    implicit def toProtoBuf(txn: SetDataTxn): Transaction =
         Transaction.newBuilder()
             .setSetData(
                 SetData.newBuilder()
@@ -80,7 +80,7 @@ object ProtoBufSerializer {
             )
             .build()
 
-    implicit def toProtoBuf(implicit txn: CheckVersionTxn): Transaction =
+    implicit def toProtoBuf(txn: CheckVersionTxn): Transaction =
         Transaction.newBuilder()
             .setCheckVersion(
                 CheckVersion.newBuilder()
@@ -90,7 +90,7 @@ object ProtoBufSerializer {
             .build()
 
 
-    implicit def toProtoBuf(implicit txn: SetACLTxn): Transaction =
+    implicit def toProtoBuf(txn: SetACLTxn): Transaction =
         Transaction.newBuilder()
             .setSetACL(
                 SetACL.newBuilder()
@@ -108,7 +108,7 @@ object ProtoBufSerializer {
             )
             .build()
 
-    implicit def toProtoBuf(implicit txn: CreateSessionTxn): Transaction =
+    implicit def toProtoBuf(txn: CreateSessionTxn): Transaction =
         Transaction.newBuilder()
             .setCreateSession(
                 CreateSession.newBuilder()
@@ -116,7 +116,7 @@ object ProtoBufSerializer {
             )
             .build()
 
-    implicit def toProtoBuf(implicit txn: ErrorTxn): Transaction =
+    implicit def toProtoBuf(txn: ErrorTxn): Transaction =
         Transaction.newBuilder()
             .setError(
                 Error.newBuilder()
@@ -124,7 +124,7 @@ object ProtoBufSerializer {
             )
             .build()
 
-    implicit def toProtoBuf(implicit txn: MultiTxn): Transaction = {
+    implicit def toProtoBuf(txn: MultiTxn): Transaction = {
         val builder = Transaction.newBuilder()
 
         txn.getTxns.asScala foreach { txn =>
@@ -160,15 +160,15 @@ class ProtoBufSerializer extends Serializer[LogRecord] with LazyLogging {
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
         val record: Option[Transaction] = log.record match {
-            case r: CreateTxn  => Some(toProtoBuf(r))
-            case r: CreateContainerTxn  => Some(toProtoBuf(r))
-            case r: DeleteTxn  => Some(toProtoBuf(r))
-            case r: SetDataTxn  => Some(toProtoBuf(r))
-            case r: CheckVersionTxn  => Some(toProtoBuf(r))
-            case r: SetACLTxn  => Some(toProtoBuf(r))
-            case r: CreateSessionTxn => Some(toProtoBuf(r))
-            case r: ErrorTxn => Some(toProtoBuf(r))
-            case r: MultiTxn => Some(toProtoBuf(r))
+            case r: CreateTxn  => Some(r)
+            case r: CreateContainerTxn  => Some(r)
+            case r: DeleteTxn  => Some(r)
+            case r: SetDataTxn  => Some(r)
+            case r: CheckVersionTxn  => Some(r)
+            case r: SetACLTxn  => Some(r)
+            case r: CreateSessionTxn => Some(r)
+            case r: ErrorTxn => Some(r)
+            case r: MultiTxn => Some(r)
             case _ => None
         }
 

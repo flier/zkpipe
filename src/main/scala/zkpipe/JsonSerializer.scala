@@ -17,7 +17,7 @@ import org.json4s.jackson.JsonMethods._
 
 import scala.collection.mutable
 import scala.collection.JavaConverters._
-import scala.language.postfixOps
+import scala.language.{implicitConversions, postfixOps}
 import scala.util.Try
 
 object JsonSerializer extends DefaultInstrumented {
@@ -29,7 +29,7 @@ object JsonSerializer extends DefaultInstrumented {
 
     def base64(bytes: Array[Byte]): JValue = if (bytes == null) JNull else BaseEncoding.base64().encode(bytes)
 
-    implicit def toJson(implicit txn: CreateTxn): JValue =
+    implicit def toJson(txn: CreateTxn): JValue =
         "create" ->
             ("path" -> txn.getPath) ~
                 ("data" -> base64(txn.getData)) ~
@@ -39,7 +39,7 @@ object JsonSerializer extends DefaultInstrumented {
                 ("ephemeral" -> txn.getEphemeral) ~
                 ("parentCVersion" -> txn.getParentCVersion)
 
-    implicit def toJson(implicit txn: CreateContainerTxn): JValue =
+    implicit def toJson(txn: CreateContainerTxn): JValue =
         "create-container" ->
             ("path" -> txn.getPath) ~
                 ("data" -> base64(txn.getData)) ~
@@ -48,21 +48,21 @@ object JsonSerializer extends DefaultInstrumented {
                 })) ~
                 ("parentCVersion" -> txn.getParentCVersion)
 
-    implicit def toJson(implicit txn: DeleteTxn): JValue =
+    implicit def toJson(txn: DeleteTxn): JValue =
         "delete" -> ("path" -> txn.getPath)
 
-    implicit def toJson(implicit txn: SetDataTxn): JValue =
+    implicit def toJson(txn: SetDataTxn): JValue =
         "set-data" ->
             ("path" -> txn.getPath) ~
                 ("data" -> base64(txn.getData)) ~
                 ("version" -> txn.getVersion)
 
-    implicit def toJson(implicit txn: CheckVersionTxn): JValue =
+    implicit def toJson(txn: CheckVersionTxn): JValue =
         "check-version" ->
             ("path" -> txn.getPath) ~
                 ("version" -> txn.getVersion)
 
-    implicit def toJson(implicit txn: SetACLTxn): JValue =
+    implicit def toJson(txn: SetACLTxn): JValue =
         "set-acl" ->
             ("path" -> txn.getPath) ~
                 ("acl" -> txn.getAcl.asScala.map({ acl =>
@@ -70,13 +70,13 @@ object JsonSerializer extends DefaultInstrumented {
                 })) ~
                 ("version" -> txn.getVersion)
 
-    implicit def toJson(implicit txn: CreateSessionTxn): JValue =
+    implicit def toJson(txn: CreateSessionTxn): JValue =
         "create-session" -> ("timeout" -> txn.getTimeOut)
 
-    implicit def toJson(implicit txn: ErrorTxn): JValue =
+    implicit def toJson(txn: ErrorTxn): JValue =
         "error" -> ("errno" -> txn.getErr)
 
-    implicit def toJson(implicit txn: MultiTxn): JValue = {
+    implicit def toJson(txn: MultiTxn): JValue = {
         val records = txn.getTxns.asScala map { txn =>
             val record = txn.getType match {
                 case OpCode.create => new CreateTxn
@@ -118,15 +118,15 @@ class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, A
 
     override def serialize(topic: String, log: LogRecord): Array[Byte] = {
         val record: Option[JValue] = log.record match {
-            case r: CreateTxn => Some(toJson(r))
-            case r: CreateContainerTxn => Some(toJson(r))
-            case r: DeleteTxn => Some(toJson(r))
-            case r: SetDataTxn => Some(toJson(r))
-            case r: CheckVersionTxn => Some(toJson(r))
-            case r: SetACLTxn => Some(toJson(r))
-            case r: CreateSessionTxn => Some(toJson(r))
-            case r: ErrorTxn => Some(toJson(r))
-            case r: MultiTxn => Some(toJson(r))
+            case r: CreateTxn => Some(r)
+            case r: CreateContainerTxn => Some(r)
+            case r: DeleteTxn => Some(r)
+            case r: SetDataTxn => Some(r)
+            case r: CheckVersionTxn => Some(r)
+            case r: SetACLTxn => Some(r)
+            case r: CreateSessionTxn => Some(r)
+            case r: ErrorTxn => Some(r)
+            case r: MultiTxn => Some(r)
             case _ => None
         }
 
