@@ -28,15 +28,19 @@ import scala.util.{Failure, Success, Try}
 import scala.concurrent.duration.Duration
 import scala.concurrent.ExecutionContext.Implicits.global
 
+object MetricServer {
+    val DEFAULT_HOST = "localhost"
+    val DEFAULT_PORT = 9091
+}
+
 class MetricServer(val uri: Uri,
                    @BooleanBeanProperty
                    val httpMetrics: Boolean)
     extends JMXExport with MetricServerMBean with DefaultInstrumented with LazyLogging with Closeable
 {
-    mbean(this)
+    import MetricServer._
 
-    val DEFAULT_HOST = "localhost"
-    val DEFAULT_PORT = 9091
+    mbean(this)
 
     val addr = new InetSocketAddress(uri.host.getOrElse(DEFAULT_HOST), uri.port.getOrElse(DEFAULT_PORT))
     val server: Server = new Server(addr)
@@ -140,15 +144,19 @@ class MetricPusher(val addr: InetSocketAddress,
     override def getInterval: Long = interval.toSeconds
 }
 
+object MetricReporter {
+    val DEFAULT_HOST = "localhost"
+    val DEFAULT_GRAPHITE_PORT = 2003
+    val DEFAULT_PICKLE_PORT = 2003
+    val DEFAULT_GANGLIA_PORT = 8649
+}
+
 class MetricReporter(val uri: Uri,
                      val interval: Duration,
                      prefix: String = "zkpipe")
     extends JMXExport with MetricReporterMBean with DefaultInstrumented with LazyLogging with Closeable
 {
-    val DEFAULT_HOST = "localhost"
-    val DEFAULT_GRAPHITE_PORT = 2003
-    val DEFAULT_PICKLE_PORT = 2003
-    val DEFAULT_GANGLIA_PORT = 8649
+    import MetricReporter._
 
     mbean(this)
 
