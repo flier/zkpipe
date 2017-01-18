@@ -6,6 +6,8 @@ import java.nio.charset.StandardCharsets.UTF_8
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.kafka.common.serialization.Serializer
 import org.apache.logging.log4j.core.config.Configurator
+import com.github.nscala_time.time.StaticDateTime.now
+import com.github.nscala_time.time.Imports._
 
 import scala.concurrent.Future
 import scala.language.{implicitConversions, postfixOps, reflectiveCalls}
@@ -92,11 +94,24 @@ object LogPipe extends LazyLogging {
                     ) {
                         logger.info(s"sync log file ${logFile.filename} ...")
 
-                        logFile.records filter {
-                            matcher
-                        } foreach {
-                            broker.send
-                        }
+                        var totalRecords = 0
+                        var sendRecords = 0
+                        val startTime = now()
+
+                        logFile.records filter { (record) => {
+                            totalRecords += 1
+
+                            val matched = matcher(record)
+
+                            if (matched)
+                                sendRecords += 1
+
+                            matched
+                        } } foreach { broker.send }
+
+                        val elapsedTime: Interval = startTime to now()
+
+                        logger.info(s"send $sendRecords of total $totalRecords records in ${elapsedTime.toDurationMillis} ms")
                     }
                 } finally {
                     logFile.close()
