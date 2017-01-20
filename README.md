@@ -156,8 +156,8 @@ The [pickle protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.ht
 ```
 ```xml
 <record
-session="97223867455045632" cxid="0" zxid="1" time="1483518498785" type="CreateSession">
-  <delete timeout="30000"/>
+session="97250703064170497" cxid="0" zxid="10" time="1484217490213" type="CreateSession">
+  <create-session timeout="30000"/>
 </record>
 ```
 ## Create Node
@@ -216,9 +216,9 @@ session="97223867455045632" cxid="5" zxid="3" time="1483674202631" path="/test/a
 ```
 ```xml
 <record
-session="97250703064170497" cxid="3" zxid="13" time="1484218466351" path="/test/abc" type="SetData">
-  <set-data path="/test/abc" version="4">
-    <data><![CDATA[aGVsbG8y]]></data>
+session="97250703064170497" cxid="2" zxid="12" time="1484218456704" path="/test/abc" type="SetData">
+  <set-data path="/test/abc" version="3">
+    <data><![CDATA[aGVsbG8=]]></data>
   </set-data>
 </record>
 ```

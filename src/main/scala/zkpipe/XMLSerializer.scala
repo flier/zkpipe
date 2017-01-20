@@ -77,7 +77,7 @@ object XMLSerializer extends DefaultInstrumented {
         </set-acl>
 
     implicit def toXML(txn: CreateSessionTxn): Elem =
-        <delete timeout={txn.getTimeOut.toString}/>
+        <create-session timeout={txn.getTimeOut.toString}/>
 
     implicit def toXML(txn: ErrorTxn): Elem =
         <error errno={txn.getErr.toString}/>
