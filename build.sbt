@@ -8,6 +8,25 @@ lazy val commonSettings = Seq(
     scalaVersion := "2.12.1"
 )
 
+val GitVersionRegex = "v([0-9]+.[0-9]+.[0-9]+)-?(.*)?".r
+
+lazy val gitSettings = Seq(
+    showCurrentGitBranch,
+    git.useGitDescribe := true,
+    git.gitTagToVersionNumber := {
+        case GitVersionRegex(v,"SNAPSHOT") => Some(s"$v-SNAPSHOT")
+        case GitVersionRegex(v,"") => Some(v)
+        case GitVersionRegex(v,s) => Some(s"$v-$s-SNAPSHOT")
+        case _ => None
+    }
+)
+
+lazy val buildInfoSettings = Seq(
+    buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion,
+        git.gitDescribedVersion, git.gitHeadCommit, git.formattedShaVersion, git.formattedDateVersion),
+    buildInfoPackage := "zkpipe"
+)
+
 lazy val librarySettings = Seq(
     libraryDependencies ++= Seq(
         // XML
@@ -72,12 +91,10 @@ lazy val assemblySettings = Seq(
 
 lazy val root = (project in file("."))
     .enablePlugins(BuildInfoPlugin, GitVersioning, GitBranchPrompt)
-    .settings(
-        buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
-        buildInfoPackage := "zkpipe"
-    )
     .settings(commonSettings: _*)
     .settings(librarySettings: _*)
+    .settings(gitSettings: _*)
+    .settings(buildInfoSettings: _*)
     .settings(assemblySettings: _*)
 
 PB.targets in Compile := Seq(

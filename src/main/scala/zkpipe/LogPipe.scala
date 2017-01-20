@@ -42,12 +42,24 @@ object LogPipe extends LazyLogging {
                         services = services :+ watcher
 
                         watcher.changedFiles
+
                     case "sync" =>
                         config.files map {
                             new LogFile(_)
                         } sortBy {
                             _.firstZxid
                         }
+
+                    case "version" =>
+                        println(s"${BuildInfo.name} ${BuildInfo.version} (" +
+                            s"scala=${BuildInfo.scalaVersion} sbt=${BuildInfo.sbtVersion}, git=${
+                            BuildInfo.gitDescribedVersion.orElse(BuildInfo.gitHeadCommit).getOrElse("N/A")
+                        } date=${BuildInfo.formattedDateVersion})")
+                        sys.exit()
+
+                    case _ =>
+                        println(s"unknown or missed command: `${config.mode}`")
+                        sys.exit()
                 }
 
                 var zxidRange = config.zxidRange

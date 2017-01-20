@@ -141,8 +141,11 @@ object Config extends JMXExport {
         )
 
         val parser = new OptionParser[Config]("zkpipe") {
-            head(BuildInfo.name, BuildInfo.version)
+            head(BuildInfo.name, s"${BuildInfo.version}-${
+                val c = BuildInfo.gitHeadCommit.get
 
+                BuildInfo.gitDescribedVersion.getOrElse(s"${c.slice(c.size-7, c.size)}-SNAPSHOT")
+            }")
             help("help").abbr("h").text("show usage screen")
 
             opt[Unit]('v', "verbose")
@@ -271,6 +274,19 @@ object Config extends JMXExport {
                         .action( (x, c) => c.copy(logFiles = c.logFiles :+ x) )
                         .text("sync Zookeeper log files")
                 )
+
+            note("")
+
+            cmd("version").action( (_, c) => c.copy(mode = "version") )
+                .text("show full version")
+
+            checkConfig( c =>
+                c.mode match {
+                    case "sync" | "watch" | "version" => success
+                    case "" | null => failure("missed command")
+                    case _ => failure(s"unknown command: ${c.mode}")
+                }
+            )
         }
 
         parser.parse(args, Config()).map({ config => mbean(config); config})
