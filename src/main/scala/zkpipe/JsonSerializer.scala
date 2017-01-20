@@ -132,12 +132,12 @@ class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, A
 
         val json: JValue = render(
             ("session" -> log.session) ~
-                ("cxid" -> log.cxid) ~
-                ("zxid" -> log.zxid) ~
-                ("time" -> log.time.getMillis) ~
-                ("path" -> log.path) ~
-                ("type" -> log.opcode.toString) ~
-                ("record" -> record.orNull)
+            ("cxid" -> log.cxid) ~
+            ("zxid" -> log.zxid) ~
+            ("time" -> log.time.getMillis) ~
+            ("path" -> log.path) ~
+            ("type" -> log.opcode.toString) ~
+            ("record" -> record.orNull)
         )
 
         val bytes = (if (printPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
