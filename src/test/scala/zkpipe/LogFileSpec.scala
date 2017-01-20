@@ -65,8 +65,8 @@ class LogFileSpec extends Specification { val is = s2"""
 
         val l = new LogFile(path.toFile, checkCrc=false)
 
-        l.firstZxid must beSome(2)
-        l.lastZxid must beSome(2)
         l.records.isEmpty must beFalse
+        l.firstZxid must beSome(2)
+        l.lastZxid must beNone
     }
 }
