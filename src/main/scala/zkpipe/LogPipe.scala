@@ -53,7 +53,10 @@ object LogPipe extends LazyLogging {
                 var zxidRange = config.zxidRange
 
                 val broker = if (config.kafkaUri != null) {
-                    val kafkaBroker = new KafkaBroker(config.kafkaUri, config.valueSerializer, config.sendQueueSize)
+                    val kafkaBroker = new KafkaBroker(config.kafkaUri,
+                                                      config.dryRun,
+                                                      config.valueSerializer,
+                                                      config.sendQueueSize)
 
                     if (!config.fromLatest && config.zxidRange.isEmpty) {
                         val latestZxid = kafkaBroker.latestZxid()

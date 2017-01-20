@@ -32,6 +32,8 @@ import MessageFormats._
 case class Config(@BeanProperty
                   mode: String = null,
                   loggingLevel: Option[Level] = None,
+                  @BooleanBeanProperty
+                  dryRun: Boolean = false,
                   logFiles: Seq[File] = Seq(),
                   logDir: Option[File] = None,
                   zxidRange: Option[Range] = None,
@@ -146,9 +148,14 @@ object Config extends JMXExport {
             opt[Unit]('v', "verbose")
                 .action((_, c) => c.copy(loggingLevel = Some(Level.INFO)))
                 .text("show verbose messages")
+
             opt[Unit]('d', "debug")
                 .action((_, c) => c.copy(loggingLevel = Some(Level.DEBUG)))
                 .text("show debug messages")
+
+            opt[Unit]("dry-run")
+                .action((_, c) => c.copy(dryRun = true))
+                .text("using the specified command without actually running them")
 
             note("\n[Records]\n")
 

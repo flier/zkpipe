@@ -23,6 +23,8 @@ public interface ConfigMBean {
 
     String getKafkaUri();
 
+    boolean isDryRun();
+
     String getMessageFormat();
 
     boolean isPrettyPrint();

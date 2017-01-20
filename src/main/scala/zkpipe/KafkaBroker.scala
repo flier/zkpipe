@@ -41,6 +41,7 @@ object KafkaBroker extends DefaultInstrumented {
 }
 
 class KafkaBroker(val uri: Uri,
+                  dryRun: Boolean,
                   valueSerializer: Serializer[LogRecord],
                   sendQueueSize: Option[Int])
     extends JMXExport with KafkaBrokerMBean with Broker with LazyLogging
@@ -89,32 +90,43 @@ class KafkaBroker(val uri: Uri,
     }
 
     override def send(log: LogRecord): Future[SendResult] = {
-        sendQueueLock foreach { lock => pendingTime.time { lock.acquire() } }
+        if (dryRun) {
+            logger.info(s"skip send transaction in the dry run mode, zxid=${log.zxid}")
 
-        sendingMessages.mark()
-
-        val promise = Promise[SendResult]()
-        val startTime = now()
-
-        producer.send(new ProducerRecord(topic, log.zxid, log),
-            (metadata: RecordMetadata, exception: Exception) => {
-                sendQueueLock foreach { _.release() }
-
-                sendLatency.update((startTime to now()).toDurationMillis, TimeUnit.MILLISECONDS)
-
-                if (exception == null) {
-                    sentMessages.mark()
-
-                    promise success KafkaResult(log, metadata)
-                } else {
-                    sendErrors.mark()
-
-                    promise failure exception
-                }
+            Future.successful(KafkaResult(log, null))
+        } else {
+            sendQueueLock foreach { lock => pendingTime.time {
+                lock.acquire()
             }
-        )
+            }
 
-        promise.future
+            sendingMessages.mark()
+
+            val promise = Promise[SendResult]()
+            val startTime = now()
+
+            producer.send(new ProducerRecord(topic, log.zxid, log),
+                (metadata: RecordMetadata, exception: Exception) => {
+                    sendQueueLock foreach {
+                        _.release()
+                    }
+
+                    sendLatency.update((startTime to now()).toDurationMillis, TimeUnit.MILLISECONDS)
+
+                    if (exception == null) {
+                        sentMessages.mark()
+
+                        promise success KafkaResult(log, metadata)
+                    } else {
+                        sendErrors.mark()
+
+                        promise failure exception
+                    }
+                }
+            )
+
+            promise.future
+        }
     }
 
     def latestZxid(): Option[Long] = {
