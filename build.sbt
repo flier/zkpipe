@@ -55,7 +55,11 @@ lazy val librarySettings = Seq(
         "io.dropwizard.metrics" % "metrics-graphite" % "3.1.2",
         "io.dropwizard.metrics" % "metrics-ganglia" % "3.1.2",
         "io.dropwizard.metrics" % "metrics-jetty9" % "3.1.2",
-        "io.dropwizard.metrics" % "metrics-servlets" % "3.1.2"
+        "io.dropwizard.metrics" % "metrics-servlets" % "3.1.2",
+        // spec2
+        "org.specs2" %% "specs2-core" % "3.8.6" % "test",
+        "org.specs2" %% "specs2-scalacheck" % "3.8.6" % "test",
+        "org.specs2" %% "specs2-mock" % "3.8.6" % "test"
     ),
     transitiveClassifiers ++= Seq("sources")
 )
@@ -73,3 +77,7 @@ PB.targets in Compile := Seq(
     PB.gens.java -> (sourceManaged in Compile).value,
     scalapb.gen(javaConversions = true) -> (sourceManaged in Compile).value
 )
+
+fork in (Test, run) := true
+
+scalacOptions in Test ++= Seq("-Yrangepos")

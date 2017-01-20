@@ -46,8 +46,6 @@ class LogFile(val file: File,
     require(file.isFile, "Have to be a regular file")
     require(file.canRead, "Have to be readable")
 
-    mbean(this, Map("name" -> file.getName))
-
     @BeanProperty
     val filename: String = file.getAbsolutePath
 
@@ -143,11 +141,15 @@ class LogFile(val file: File,
 
     var lastZxid: Option[Long] = None
 
+    val mBean: JMXBean = registerMBean(this, Map("name" -> file.getName))
+
     override def close(): Unit = {
         if (!closed) {
             logger.info(s"close `$filename`")
 
             cis.close()
+
+            if (mBean != null) mBean.unregister()
 
             closed = true
         }
