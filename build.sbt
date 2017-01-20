@@ -10,6 +10,8 @@ lazy val commonSettings = Seq(
 
 lazy val librarySettings = Seq(
     libraryDependencies ++= Seq(
+        // XML
+        "org.scala-lang.modules" %% "scala-xml" % "1.0.6",
         // logging
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.7",
         "org.apache.logging.log4j" % "log4j-api" % "2.7",

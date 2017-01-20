@@ -25,6 +25,8 @@ public interface ConfigMBean {
 
     String getMessageFormat();
 
+    boolean isPrettyPrint();
+
     int getSendQueueSize();
 
     String getMetricServerUri();

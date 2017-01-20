@@ -24,7 +24,7 @@ import scala.language.postfixOps
 object MessageFormats extends Enumeration {
     type MessageFormat = Value
 
-    val pb, json, raw = Value
+    val pb, json, xml, raw = Value
 }
 
 import MessageFormats._
@@ -46,6 +46,8 @@ case class Config(@BeanProperty
                   checkCrc: Boolean = true,
                   kafkaUri: Uri = null,
                   msgFormat: MessageFormat = json,
+                  @BooleanBeanProperty
+                  prettyPrint: Boolean = false,
                   sendQueueSize: Option[Int] = None,
                   metricServerUri: Option[Uri] = None,
                   pushGatewayAddr: Option[InetSocketAddress] = None,
@@ -68,7 +70,8 @@ case class Config(@BeanProperty
 
     lazy val valueSerializer: Serializer[LogRecord] with LazyLogging = msgFormat match {
         case `pb` => new ProtoBufSerializer
-        case `json` => new JsonSerializer
+        case `json` => new JsonSerializer(prettyPrint)
+        case `xml` => new XMLSerializer(prettyPrint)
         case `raw` => new RawSerializer
     }
 
@@ -183,6 +186,10 @@ object Config extends JMXExport {
                 .valueName("<format>")
                 .action((x, c) => c.copy(msgFormat = x))
                 .text("encode message in [pb, json, raw] format (default: json)")
+
+            opt[Unit]("pretty-print")
+                .action((_, c) => c.copy(prettyPrint = true))
+                .text("format JSON/XML for pretty print")
 
             opt[Int]("send-queue")
                 .valueName("<size>")

@@ -27,6 +27,8 @@ object JsonSerializer extends DefaultInstrumented {
     val encodeBytes: Meter = metrics.meter("encoded-bytes", SUBSYSTEM)
     val recordSize: Histogram = metrics.histogram("record-size", SUBSYSTEM)
 
+    val PRETTY_PRINT = "pretty-print"
+
     def base64(bytes: Array[Byte]): JValue = if (bytes == null) JNull else BaseEncoding.base64().encode(bytes)
 
     implicit def toJson(txn: CreateTxn): JValue =
@@ -90,27 +92,26 @@ object JsonSerializer extends DefaultInstrumented {
                 BinaryInputArchive.getArchive(
                     new ByteArrayInputStream(txn.getData)), "txn")
 
-            record match {
-                case r: CreateTxn => toJson(r)
-                case r: CreateContainerTxn => toJson(r)
-                case r: DeleteTxn => toJson(r)
-                case r: SetDataTxn => toJson(r)
-                case r: CheckVersionTxn => toJson(r)
+            val v: JValue = record match {
+                case r: CreateTxn => r
+                case r: CreateContainerTxn => r
+                case r: DeleteTxn => r
+                case r: SetDataTxn => r
+                case r: CheckVersionTxn => r
             }
-        } toList
+
+            v
+        }
 
         "multi" -> records
     }
 }
 
-class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, Any]())
-    extends Serializer[LogRecord] with LazyLogging
+class JsonSerializer(prettyPrint: Boolean = false) extends Serializer[LogRecord] with LazyLogging
 {
     import JsonSerializer._
 
-    val PROPERTY_PRETTY = "pretty"
-
-    lazy val printPretty: Boolean = Try(props.get(PROPERTY_PRETTY).toString.toBoolean).getOrElse(false)
+    var props: mutable.Map[String, Any] = mutable.Map()
 
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {
         props ++= configs.asScala.toMap
@@ -140,7 +141,11 @@ class JsonSerializer(var props: mutable.Map[String, Any] = mutable.Map[String, A
             ("record" -> record.orNull)
         )
 
-        val bytes = (if (printPretty) { pretty(json) } else { compact(json) }).getBytes(UTF_8)
+        val bytes = (if (Try(props.get(PRETTY_PRINT).toString.toBoolean).getOrElse(prettyPrint)) {
+            pretty(json)
+        } else {
+            compact(json)
+        }).getBytes(UTF_8)
 
         encodeRecords.mark()
         encodeBytes.mark(bytes.length)
