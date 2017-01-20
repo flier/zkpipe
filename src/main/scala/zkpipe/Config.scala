@@ -141,7 +141,7 @@ object Config extends JMXExport {
         )
 
         val parser = new OptionParser[Config]("zkpipe") {
-            head("zkpipe", "0.1")
+            head(BuildInfo.name, BuildInfo.version)
 
             help("help").abbr("h").text("show usage screen")
 

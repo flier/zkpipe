@@ -71,6 +71,11 @@ lazy val assemblySettings = Seq(
 )
 
 lazy val root = (project in file("."))
+    .enablePlugins(BuildInfoPlugin)
+    .settings(
+        buildInfoKeys := Seq[BuildInfoKey](name, version, scalaVersion, sbtVersion),
+        buildInfoPackage := "zkpipe"
+    )
     .settings(commonSettings: _*)
     .settings(librarySettings: _*)
     .settings(assemblySettings: _*)
