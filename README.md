@@ -7,7 +7,7 @@ Consume Zookeeper binary log to sync filtered transactions to Kafka topic.
 - [Sync](#sync) transactions from `Zookeeper` binary log files to `Kafka` topic. 
 - [Watch](#watch) log directory and continue to sync changed transactions. 
 - [Filter](#filter) transaction with `zxid range` or `path prefix`.
-- [Encode](#encoding-format) transaction as `JSON`, `ProtoBuf` or `Raw` format.
+- [Encode](#encoding-format) transaction as `JSON`, `XML`, `ProtoBuf` or `Raw` format.
 - Resume [from latest](#from-latest) transaction in the `Kafka` topic.
 - Report [metrics](#metrics) to `Prometheus`, `Graphite` or `Ganglia`.
 
@@ -100,6 +100,7 @@ Please check [FileSystem.getPathMatcher](https://docs.oracle.com/javase/7/docs/a
 
 - `pb` encode transaction in ProtoBuf format
 - `json` encode transaction in JSON format
+- `xml` encode transaction in XML format
 - `raw` transaction in raw Zookeeper format 
 
 > zkpipe [options] --encode pb
@@ -153,6 +154,12 @@ The [pickle protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.ht
   "zxid": 10
 }
 ```
+```xml
+<record
+session="97223867455045632" cxid="0" zxid="1" time="1483518498785" type="CreateSession">
+  <delete timeout="30000"/>
+</record>
+```
 ## Create Node
 ```json
 {
@@ -179,6 +186,16 @@ The [pickle protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.ht
   "zxid": 3
 }
 ```
+```xml
+<record
+session="97223867455045632" cxid="5" zxid="3" time="1483674202631" path="/test/abc" type="Create">
+  <create path="/test/abc" ephemeral="false" parentCVersion="1">
+    <data><![CDATA[]]></data>
+    <acl scheme="world" id="anyone" perms="31"/>
+  </create>
+</record>
+```
+
 ## Set Data
 ```json
 {
@@ -196,4 +213,12 @@ The [pickle protocol](http://graphite.readthedocs.io/en/latest/feeding-carbon.ht
   "type": "SetData",
   "zxid": 12
 }
+```
+```xml
+<record
+session="97250703064170497" cxid="3" zxid="13" time="1484218466351" path="/test/abc" type="SetData">
+  <set-data path="/test/abc" version="4">
+    <data><![CDATA[aGVsbG8y]]></data>
+  </set-data>
+</record>
 ```
