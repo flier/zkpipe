@@ -88,3 +88,5 @@ PB.targets in Compile := Seq(
 fork in (Test, run) := true
 
 scalacOptions in Test ++= Seq("-Yrangepos")
+
+publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath + "/.m2/repository")))
