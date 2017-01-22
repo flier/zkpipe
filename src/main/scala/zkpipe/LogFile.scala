@@ -63,14 +63,17 @@ class LogFile(val file: File,
 
     header.deserialize(stream, "fileHeader")
 
-    def position(): Long = cis.getCount
+    @BeanProperty
+    var position: Long = cis.getCount
 
-    readBytes.mark(position())
+    readBytes.mark(position)
 
     if (offset > position) {
         logger.debug(s"skip to offset $offset")
 
         cis.skip(offset-position)
+
+        position = cis.getCount
     }
 
     @BooleanBeanProperty
@@ -125,14 +128,14 @@ class LogFile(val file: File,
             }
         }
 
-        val pos = position()
-
         val record: LogRecord = new LogRecord(bytes)
 
-        readBytes.mark(position() - pos)
+        readBytes.mark(cis.getCount - position)
         readRecords.mark()
         recordSize += bytes.length
         recordLatency += (record.time to now).millis
+
+        position = cis.getCount
 
         record
     }
@@ -154,8 +157,6 @@ class LogFile(val file: File,
             closed = true
         }
     }
-
-    override def getPosition: Long = position()
 
     override def getFirstZxid: Long = firstZxid.getOrElse(-1)
 
