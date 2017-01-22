@@ -42,7 +42,7 @@ class LogFileSpec extends Specification { val is = s2"""
         l.isValid must beTrue
         l.filepath must beEqualTo(path)
         l.closed must beFalse
-        l.position() must beEqualTo(16)
+        l.position must beEqualTo(16)
         l.firstZxid must beNone
         l.lastZxid must beNone
         l.records.isEmpty must beTrue
