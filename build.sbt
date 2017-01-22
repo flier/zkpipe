@@ -97,6 +97,7 @@ lazy val root = (project in file("."))
     .settings(buildInfoSettings: _*)
     .settings(assemblySettings: _*)
 
+// protobuf
 PB.targets in Compile := Seq(
     PB.gens.java -> (sourceManaged in Compile).value,
     scalapb.gen(javaConversions = true) -> (sourceManaged in Compile).value
@@ -107,3 +108,16 @@ fork in (Test, run) := true
 scalacOptions in Test ++= Seq("-Yrangepos")
 
 publishTo := Some(Resolver.file("file",  new File(Path.userHome.absolutePath + "/.m2/repository")))
+
+// package
+mappings in (Compile, packageBin) ++= Seq(
+    (baseDirectory.value / "bin" / "zkpipe.sh") -> "bin/zkpipe.sh",
+    (baseDirectory.value / "bin" / "zkpipe-run.sh") -> "bin/zkpipe-run.sh"
+)
+
+// assembly
+import sbtassembly.AssemblyPlugin.defaultShellScript
+
+assemblyOption in assembly := (assemblyOption in assembly).value.copy(prependShellScript = Some(defaultShellScript))
+
+assemblyJarName in assembly := s"${name.value}-${version.value}"

@@ -222,3 +222,20 @@ session="97250703064170497" cxid="2" zxid="12" time="1484218456704" path="/test/
   </set-data>
 </record>
 ```
+
+# Build
+
+First, use `compile` command to generate source codes and compile classes.
+
+```bash
+$ sbt compile
+```
+
+And then, use `assembly` command to package all the code and dependencies to one fat jar.
+
+```bash
+$ sbt assembly 
+```
+
+The fat jar will be prepend with shell script, so we could use it as a shell command
+
