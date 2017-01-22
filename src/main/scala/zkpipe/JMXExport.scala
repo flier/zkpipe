@@ -30,19 +30,23 @@ trait JMXExport {
 
     def registerMBean(obj: Object, name: ObjectName = null): JMXBean = {
         val clazz = obj.getClass
-
-        new JMXBean(mBeanServer.registerMBean(obj, if (name != null) name else {
+        val objname = if (name != null) name else {
             new ObjectName(clazz.getPackage.getName, "type", clazz.getSimpleName)
-        }))
+        }
+
+        if (mBeanServer.isRegistered(objname)) mBeanServer.unregisterMBean(objname)
+
+        new JMXBean(mBeanServer.registerMBean(obj, objname))
     }
 
     def registerMBean(obj: Object, props: Map[String, String]): JMXBean = {
         val clazz = obj.getClass
+        val objname = new ObjectName(clazz.getPackage.getName,
+            new util.Hashtable((Map("type" -> clazz.getSimpleName) ++ props).asJava))
 
-        new JMXBean(mBeanServer.registerMBean(obj,
-            new ObjectName(clazz.getPackage.getName,
-                new util.Hashtable((Map("type" -> clazz.getSimpleName) ++ props).asJava))
-        ))
+        if (mBeanServer.isRegistered(objname)) mBeanServer.unregisterMBean(objname)
+
+        new JMXBean(mBeanServer.registerMBean(obj, objname))
     }
 
     def mbean(obj: Object, name: ObjectName = null): JMXBean = { registerMBean(obj, name) }
