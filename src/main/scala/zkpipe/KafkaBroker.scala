@@ -145,7 +145,10 @@ class KafkaBroker(val uri: Uri,
         val (partition, offset) = endOffsets.asScala.toSeq.sortBy(_._2).last
 
         consumer.assign(util.Arrays.asList(partition))
-        consumer.seek(partition, offset - 1)
+        // offset could be zero for the topic / a partition of the topic
+        if (offset >= 1) {
+            consumer.seek(partition, offset - 1)
+        }
 
         val records = consumer.poll(1000).records(partition)
 
