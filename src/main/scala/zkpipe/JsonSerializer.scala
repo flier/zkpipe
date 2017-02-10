@@ -29,12 +29,22 @@ object JsonSerializer extends DefaultInstrumented {
 
     val PRETTY_PRINT = "pretty-print"
 
-    def base64(bytes: Array[Byte]): JValue = if (bytes == null) JNull else BaseEncoding.base64().encode(bytes)
+    def encodeData(bytes: Array[Byte]): JValue =
+        if (bytes == null) JNull
+        else {
+            val s = new String(bytes, UTF_8);
+
+            if (s.chars().anyMatch(c => Character.isISOControl(c))) {
+                "base64" -> BaseEncoding.base64().encode(bytes)
+            } else {
+                s
+            }
+        }
 
     implicit def toJson(txn: CreateTxn): JValue =
         "create" ->
             ("path" -> txn.getPath) ~
-            ("data" -> base64(txn.getData)) ~
+            ("data" -> encodeData(txn.getData)) ~
             ("acl" -> txn.getAcl.asScala.map({ acl =>
                 ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
             })) ~
@@ -44,7 +54,7 @@ object JsonSerializer extends DefaultInstrumented {
     implicit def toJson(txn: CreateContainerTxn): JValue =
         "create-container" ->
             ("path" -> txn.getPath) ~
-            ("data" -> base64(txn.getData)) ~
+            ("data" -> encodeData(txn.getData)) ~
             ("acl" -> txn.getAcl.asScala.map({ acl =>
                 ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
             })) ~
@@ -56,7 +66,7 @@ object JsonSerializer extends DefaultInstrumented {
     implicit def toJson(txn: SetDataTxn): JValue =
         "set-data" ->
             ("path" -> txn.getPath) ~
-            ("data" -> base64(txn.getData)) ~
+            ("data" -> encodeData(txn.getData)) ~
             ("version" -> txn.getVersion)
 
     implicit def toJson(txn: CheckVersionTxn): JValue =
