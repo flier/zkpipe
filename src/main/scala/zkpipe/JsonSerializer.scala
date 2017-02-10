@@ -34,21 +34,21 @@ object JsonSerializer extends DefaultInstrumented {
     implicit def toJson(txn: CreateTxn): JValue =
         "create" ->
             ("path" -> txn.getPath) ~
-                ("data" -> base64(txn.getData)) ~
-                ("acl" -> txn.getAcl.asScala.map({ acl =>
-                    ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
-                })) ~
-                ("ephemeral" -> txn.getEphemeral) ~
-                ("parentCVersion" -> txn.getParentCVersion)
+            ("data" -> base64(txn.getData)) ~
+            ("acl" -> txn.getAcl.asScala.map({ acl =>
+                ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
+            })) ~
+            ("ephemeral" -> txn.getEphemeral) ~
+            ("parentCVersion" -> txn.getParentCVersion)
 
     implicit def toJson(txn: CreateContainerTxn): JValue =
         "create-container" ->
             ("path" -> txn.getPath) ~
-                ("data" -> base64(txn.getData)) ~
-                ("acl" -> txn.getAcl.asScala.map({ acl =>
-                    ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
-                })) ~
-                ("parentCVersion" -> txn.getParentCVersion)
+            ("data" -> base64(txn.getData)) ~
+            ("acl" -> txn.getAcl.asScala.map({ acl =>
+                ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
+            })) ~
+            ("parentCVersion" -> txn.getParentCVersion)
 
     implicit def toJson(txn: DeleteTxn): JValue =
         "delete" -> ("path" -> txn.getPath)
@@ -56,21 +56,21 @@ object JsonSerializer extends DefaultInstrumented {
     implicit def toJson(txn: SetDataTxn): JValue =
         "set-data" ->
             ("path" -> txn.getPath) ~
-                ("data" -> base64(txn.getData)) ~
-                ("version" -> txn.getVersion)
+            ("data" -> base64(txn.getData)) ~
+            ("version" -> txn.getVersion)
 
     implicit def toJson(txn: CheckVersionTxn): JValue =
         "check-version" ->
             ("path" -> txn.getPath) ~
-                ("version" -> txn.getVersion)
+            ("version" -> txn.getVersion)
 
     implicit def toJson(txn: SetACLTxn): JValue =
         "set-acl" ->
             ("path" -> txn.getPath) ~
-                ("acl" -> txn.getAcl.asScala.map({ acl =>
-                    ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
-                })) ~
-                ("version" -> txn.getVersion)
+            ("acl" -> txn.getAcl.asScala.map({ acl =>
+                ("scheme" -> acl.getId.getScheme) ~ ("id" -> acl.getId.getId) ~ ("perms" -> acl.getPerms)
+            })) ~
+            ("version" -> txn.getVersion)
 
     implicit def toJson(txn: CreateSessionTxn): JValue =
         "create-session" -> ("timeout" -> txn.getTimeOut)
