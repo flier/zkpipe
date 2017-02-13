@@ -31,9 +31,9 @@ object XMLSerializer extends DefaultInstrumented {
         if (bytes == null)
             <data/>
         else {
-            val s = new String(bytes, UTF_8);
+            val s = new String(bytes, UTF_8)
 
-            if (s.chars().anyMatch(c => Character.isISOControl(c))) {
+            if (s.chars().anyMatch(c => Character.isISOControl(c) && !Character.isWhitespace(c))) {
                 <data encoding="base64">{ PCData(BaseEncoding.base64().encode(bytes)) }</data>
             } else {
                 <data>{ PCData(s) }</data>

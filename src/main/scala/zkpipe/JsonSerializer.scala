@@ -33,9 +33,9 @@ object JsonSerializer extends DefaultInstrumented {
         if (bytes == null)
             JNull
         else {
-            val s = new String(bytes, UTF_8);
+            val s = new String(bytes, UTF_8)
 
-            if (s.chars().anyMatch(c => Character.isISOControl(c))) {
+            if (s.chars().anyMatch(c => Character.isISOControl(c) && !Character.isWhitespace(c))) {
                 "base64" -> BaseEncoding.base64().encode(bytes)
             } else try {
                 parse(StringInput(s))
