@@ -7,10 +7,12 @@ import java.util.zip.Adler32
 import com.google.common.io.CountingInputStream
 import com.typesafe.scalalogging.LazyLogging
 import org.apache.jute.BinaryInputArchive
-import org.apache.zookeeper.server.persistence.{FileHeader, FileTxnLog}
+import org.apache.zookeeper.server.persistence.{FileHeader, FileSnap, FileTxnLog}
 import com.github.nscala_time.time.StaticDateTime.now
 import com.github.nscala_time.time.Imports._
 import nl.grons.metrics.scala.{Counter, DefaultInstrumented, Histogram, Meter}
+import org.apache.zookeeper.data.StatPersisted
+import org.apache.zookeeper.server.ReferenceCountedACLCache
 
 import scala.beans.{BeanProperty, BooleanBeanProperty}
 import scala.util.matching.Regex
@@ -68,16 +70,33 @@ class LogFile(val file: File,
 
     readBytes.mark(position)
 
+    @BooleanBeanProperty
+    def isLog: Boolean = header.getMagic == FileTxnLog.TXNLOG_MAGIC
+
+    @BooleanBeanProperty
+    def isSnapshot: Boolean = header.getMagic == FileSnap.SNAP_MAGIC
+
+    var aclCache: ReferenceCountedACLCache = null
+
     if (offset > position) {
         logger.debug(s"skip to offset $offset")
 
         cis.skip(offset-position)
 
         position = cis.getCount
-    }
+    } else if (isSnapshot) {
+        for (_ <- 0 until stream.readInt("count")) {
+            val id = stream.readLong("id")
+            val timeout = stream.readInt("timeout")
 
-    @BooleanBeanProperty
-    def isValid: Boolean = header.getMagic == FileTxnLog.TXNLOG_MAGIC
+            logger.trace(s"session `$id` with timeout $timeout")
+        }
+
+        aclCache = new ReferenceCountedACLCache()
+        aclCache.deserialize(stream)
+
+        position = cis.getCount
+    }
 
     def skipToEnd: LogRecord = {
         val last = records.last
@@ -88,11 +107,11 @@ class LogFile(val file: File,
     }
 
     val records: Stream[LogRecord] = {
-        def next(): Stream[LogRecord] = Try(readRecord()) match {
-            case Success(record) =>
-                lastZxid = Some(record.zxid)
+        def next(): Stream[LogRecord] = Try(if (isLog) readRecord() else readDataNode()) match {
+            case Success(txn) =>
+                lastZxid = Some(txn.zxid)
 
-                record #:: next()
+                txn #:: next()
 
             case Failure(err) =>
                 err match {
@@ -128,7 +147,7 @@ class LogFile(val file: File,
             }
         }
 
-        val record: LogRecord = new LogRecord(bytes)
+        val record: TransactionLog = new TransactionLog(bytes)
 
         readBytes.mark(cis.getCount - position)
         readRecords.mark()
@@ -138,6 +157,29 @@ class LogFile(val file: File,
         position = cis.getCount
 
         record
+    }
+
+    def readDataNode(): LogRecord = {
+        val path = stream.readString("path")
+
+        stream.startRecord("node")
+        val data = stream.readBuffer("data")
+        val acl = stream.readLong("acl")
+        val stat = new StatPersisted
+        stat.deserialize(stream, "statpersisted")
+        stream.endRecord("node")
+
+        position = cis.getCount
+
+        aclCache.addUsage(acl)
+
+        if (path == "/") {
+            aclCache.purgeUnused()
+
+            cis.close()
+        }
+
+        new DataNode(path, data, aclCache.convertLong(acl), stat)
     }
 
     var firstZxid: Option[Long] = Try(records.head.zxid).toOption

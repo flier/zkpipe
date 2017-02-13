@@ -23,12 +23,20 @@ object ProtoBufSerializer {
     val encodeBytes: Meter = metrics.meter("encoded-bytes", SUBSYSTEM)
     val recordSize: Histogram = metrics.histogram("record-size", SUBSYSTEM)
 
+    def encodeData(data: Array[Byte]): ByteString = {
+        if (data == null) {
+            ByteString.EMPTY
+        } else {
+            ByteString.copyFrom(data)
+        }
+    }
+
     implicit def toProtoBuf(txn: CreateTxn): Transaction =
         Transaction.newBuilder()
             .setCreate(
                 Create.newBuilder()
                     .setPath(txn.getPath)
-                    .setData(ByteString.copyFrom(txn.getData))
+                    .setData(encodeData(txn.getData))
                     .addAllAcl(
                         txn.getAcl.asScala map { acl =>
                             ACL.newBuilder()
@@ -48,7 +56,7 @@ object ProtoBufSerializer {
             .setCreateContainer(
                 CreateContainer.newBuilder()
                     .setPath(txn.getPath)
-                    .setData(ByteString.copyFrom(txn.getData))
+                    .setData(encodeData(txn.getData))
                     .addAllAcl(
                         txn.getAcl.asScala map { acl =>
                             ACL.newBuilder()
@@ -75,7 +83,7 @@ object ProtoBufSerializer {
             .setSetData(
                 SetData.newBuilder()
                     .setPath(txn.getPath)
-                    .setData(ByteString.copyFrom(txn.getData))
+                    .setData(encodeData(txn.getData))
                     .setVersion(txn.getVersion)
             )
             .build()

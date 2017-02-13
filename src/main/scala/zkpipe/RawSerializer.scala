@@ -20,12 +20,14 @@ class RawSerializer extends Serializer[LogRecord] with LazyLogging {
 
     override def configure(configs: util.Map[String, _], isKey: Boolean): Unit = {}
 
-    override def serialize(topic: String, data: LogRecord): Array[Byte] = {
-        encodeRecords.mark()
-        encodeBytes.mark(data.bytes.length)
-        recordSize += data.bytes.length
+    override def serialize(topic: String, record: LogRecord): Array[Byte] = {
+        val bytes = record.bytes
 
-        data.bytes
+        encodeRecords.mark()
+        encodeBytes.mark(bytes.length)
+        recordSize += bytes.length
+
+        bytes
     }
 
     override def close(): Unit = {}

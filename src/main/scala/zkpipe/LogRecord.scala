@@ -1,15 +1,21 @@
 package zkpipe
 
+import java.io.{ByteArrayOutputStream, DataOutputStream}
+
 import org.apache.zookeeper.ZooDefs.{OpCode, Perms}
 import com.github.nscala_time.time.Imports._
 import com.typesafe.scalalogging.LazyLogging
 import io.prometheus.client.Counter
 import nl.grons.metrics.scala.{DefaultInstrumented, Histogram, Meter}
-import org.apache.jute.Record
+import org.apache.jute.{BinaryOutputArchive, OutputArchive, Record}
+import org.apache.zookeeper.data.{ACL, StatPersisted}
 import org.apache.zookeeper.server.util.SerializeUtils
 import org.apache.zookeeper.txn._
 
 import scala.language.postfixOps
+import java.util
+
+import zkpipe.TxnTypes.TxnType
 
 object LogRecord extends DefaultInstrumented {
     val SUBSYSTEM: String = "decode"
@@ -63,7 +69,20 @@ object AclPerms extends Enumeration {
     val All = Value(Perms.ALL)
 }
 
-class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
+trait LogRecord {
+    val bytes: Array[Byte]
+    val record: Record
+    val session: Long
+    val cxid: Int
+    val zxid: Long
+    val time: DateTime
+    val opcode: TxnType
+    val path: Option[String]
+
+    def serialize(out: OutputArchive, tag: String): Unit
+}
+
+class TransactionLog(val bytes: Array[Byte]) extends LogRecord with LazyLogging  {
     import LogRecord._
     import TxnTypes._
 
@@ -89,4 +108,34 @@ class LogRecord(val bytes: Array[Byte]) extends LazyLogging {
     totalRecords.mark()
     totalBytes.mark(bytes.length)
     recordSize += bytes.length
+
+    def serialize(out: OutputArchive, tag: String): Unit = {
+        out.writeBuffer(bytes, "record")
+    }
+}
+
+class DataNode(val _path: String,
+               val data: Array[Byte],
+               val acl: util.List[ACL],
+               val stat: StatPersisted) extends LogRecord with LazyLogging {
+    lazy val record: Record = new CreateTxn(_path, data, acl, stat.getEphemeralOwner != 0, stat.getPzxid.toInt)
+    lazy val session: Long = 0
+    lazy val cxid: Int = stat.getCzxid.toInt
+    lazy val zxid: Long = stat.getMzxid
+    lazy val time: DateTime = stat.getMtime.toDateTime
+    lazy val opcode: TxnType = TxnTypes.Create
+    lazy val path: Option[String] = Some(_path)
+
+    def serialize(out: OutputArchive, tag: String): Unit = {
+        val hdr = new TxnHeader(session, cxid, zxid, stat.getMtime, opcode.id)
+        hdr.serialize(out, "hdr")
+        record.serialize(out, "txn")
+    }
+
+    lazy val bytes: Array[Byte] = {
+        val stream = new ByteArrayOutputStream()
+        val out = new BinaryOutputArchive(new DataOutputStream(stream))
+        record.serialize(out, "record")
+        stream.toByteArray
+    }
 }

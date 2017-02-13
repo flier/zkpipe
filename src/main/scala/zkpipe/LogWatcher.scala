@@ -38,7 +38,7 @@ class LogWatcher(val dir: File,
 
             Try (new LogFile(file)) match {
                 case Success(logFile) =>
-                    if (logFile.isValid) {
+                    if (logFile.isLog) {
                         Some((logFile.filepath, logFile))
                     } else {
                         logger.info(s"skip invalid file $filename")

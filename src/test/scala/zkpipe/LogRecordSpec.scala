@@ -10,7 +10,7 @@ class LogRecordSpec extends Specification { val is = s2"""
         when parse invalid transaction will throw exception     $e2
     """
 
-    def e1 = Try(new LogRecord(Array[Byte]())) must beAFailedTry
+    def e1 = Try(new TransactionLog(Array[Byte]())) must beAFailedTry
 
-    def e2 = Try(new LogRecord(Seq.fill(16)(0.toByte).toArray)) must beAFailedTry
+    def e2 = Try(new TransactionLog(Seq.fill(16)(0.toByte).toArray)) must beAFailedTry
 }

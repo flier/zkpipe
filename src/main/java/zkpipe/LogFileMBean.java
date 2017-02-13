@@ -5,7 +5,9 @@ public interface LogFileMBean {
 
     long getOffset();
 
-    boolean isValid();
+    boolean isLog();
+
+    boolean isSnapshot();
 
     boolean isClosed();
 
