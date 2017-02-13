@@ -4,12 +4,13 @@ Consume Zookeeper binary log to sync filtered transactions to Kafka topic.
 
 # Features
 
-- [Sync](#sync) transactions from `Zookeeper` binary log files to `Kafka` topic. 
-- [Watch](#watch) log directory and continue to sync changed transactions. 
-- [Filter](#filter) transaction with `zxid range` or `path prefix`.
+- [Sync](#sync) transactions from `Zookeeper` binary log/snapshot files to `Kafka` topic. 
+- [Watch](#watch) log directory and continue to sync changed transaction logs. 
+- [Filter](#filter) transaction with `zxid range`, `path prefix` or `path pattern`.
 - [Encode](#encoding-format) transaction as `JSON`, `XML`, `ProtoBuf` or `Raw` format.
 - Resume [from latest](#from-latest) transaction in the `Kafka` topic.
 - Report [metrics](#metrics) to `Prometheus`, `Graphite` or `Ganglia`.
+- Low memory footprint base on the streaming mode
 
 # Usage
 
@@ -38,7 +39,7 @@ $ zkpipe watch /usr/local/var/run/zookeeper/data/version-2/ --kafka-uri=kafka://
 ## Sync 
 `sync` transactions from the binary log files to Kafka topic.
 
-> zkpipe sync \<log files\>
+> zkpipe sync \<log/snapshot files\>
 
 ```bash
 $ zkpipe sync /usr/local/var/run/zookeeper/data/version-2/log.c7
@@ -239,3 +240,6 @@ $ sbt assembly
 
 The fat jar will be prepend with shell script, so we could use it as a shell command
 
+```bash
+$ ./zkpipe-0.1.1 -h
+```
