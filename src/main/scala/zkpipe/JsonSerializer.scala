@@ -30,14 +30,17 @@ object JsonSerializer extends DefaultInstrumented {
     val PRETTY_PRINT = "pretty-print"
 
     def encodeData(bytes: Array[Byte]): JValue =
-        if (bytes == null) JNull
+        if (bytes == null)
+            JNull
         else {
             val s = new String(bytes, UTF_8);
 
             if (s.chars().anyMatch(c => Character.isISOControl(c))) {
                 "base64" -> BaseEncoding.base64().encode(bytes)
-            } else {
-                s
+            } else try {
+                parse(StringInput(s))
+            } catch {
+                case _: Throwable => JString(s)
             }
         }
 
