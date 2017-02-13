@@ -27,13 +27,24 @@ object XMLSerializer extends DefaultInstrumented {
 
     val PRETTY_PRINT = "pretty-print"
 
-    def base64(bytes: Array[Byte]): String = if (bytes == null) "" else BaseEncoding.base64().encode(bytes)
+    def encodeData(bytes: Array[Byte]): Elem =
+        if (bytes == null)
+            <data/>
+        else {
+            val s = new String(bytes, UTF_8);
+
+            if (s.chars().anyMatch(c => Character.isISOControl(c))) {
+                <data encoding="base64">{ PCData(BaseEncoding.base64().encode(bytes)) }</data>
+            } else {
+                <data>{ PCData(s) }</data>
+            }
+        }
 
     implicit def toXML(txn: CreateTxn): Elem =
         <create path={txn.getPath}
                 ephemeral={txn.getEphemeral.toString}
                 parentCVersion={txn.getParentCVersion.toString}>
-            <data>{ PCData(base64(txn.getData)) }</data>
+            { encodeData(txn.getData) }
         { txn.getAcl.asScala.map({ acl =>
             <acl scheme={acl.getId.getScheme}
                  id={acl.getId.getId}
@@ -44,7 +55,7 @@ object XMLSerializer extends DefaultInstrumented {
     implicit def toXML(txn: CreateContainerTxn): Elem =
         <create-container path={txn.getPath}
                           parentCVersion={txn.getParentCVersion.toString}>
-            <data>{ PCData(base64(txn.getData)) }</data>
+            { encodeData(txn.getData) }
 
             { txn.getAcl.asScala.map({ acl =>
                 <acl scheme={acl.getId.getScheme}
@@ -59,7 +70,7 @@ object XMLSerializer extends DefaultInstrumented {
     implicit def toXML(txn: SetDataTxn): Elem =
         <set-data path={txn.getPath}
                   version={txn.getVersion.toString}>
-            <data>{ PCData(base64(txn.getData)) }</data>
+            { encodeData(txn.getData) }
         </set-data>
 
     implicit def toXML(txn: CheckVersionTxn): Elem =
